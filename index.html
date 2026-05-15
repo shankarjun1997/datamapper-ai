@@ -701,6 +701,183 @@ select.cell-edit{
 
 /* ── SUMMARY DISPLAY ────────────────────────────────────── */
 .summary-box{background:var(--bg-0);border:1px solid var(--border);border-radius:8px;padding:16px;font-size:13px;color:var(--text-1);line-height:1.7;white-space:pre-wrap;min-height:80px;max-height:400px;overflow-y:auto}
+
+/* ══════════════════════════════════════════════════════════
+   MOBILE-RESPONSIVE LAYOUT
+   Breakpoints: ≤768px (tablet/mobile), ≤480px (small phone)
+══════════════════════════════════════════════════════════ */
+
+/* ── HAMBURGER MENU BUTTON ───────────────────────────────── */
+[data-theme="stakeholder"] .mobile-menu-btn { background:#f1f5f9; border-color:#e2e8f0; color:#0f172a; }
+[data-theme="stakeholder"] .mobile-menu-btn:hover { background:#e2e8f0; }
+[data-theme="executive"] .mobile-menu-btn { background:var(--bg-3); border-color:var(--border-2); }
+.mobile-menu-btn {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 10px;
+  background: var(--bg-3);
+  border: 1px solid var(--border-2);
+  border-radius: 8px;
+  color: var(--text-1);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background .15s;
+}
+.mobile-menu-btn:hover { background: var(--bg-4); }
+
+/* ── SIDEBAR SCRIM / OVERLAY ─────────────────────────────── */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.55);
+  z-index: 98;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+.sidebar-overlay.mobile-open { display: block; }
+
+/* ── MOBILE BUTTON ROW ───────────────────────────────────── */
+.btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+.btn-row .btn-lg { flex: 1 1 200px; justify-content: center; }
+
+@media (max-width: 768px) {
+  /* ── SIDEBAR ────────────── */
+  .sidebar {
+    position: fixed;
+    left: -250px;
+    top: 0;
+    bottom: 0;
+    width: 240px;
+    height: 100dvh;
+    z-index: 100;
+    transition: left .25s cubic-bezier(.4,0,.2,1);
+  }
+  .sidebar.mobile-open {
+    left: 0;
+    box-shadow: 4px 0 32px rgba(0,0,0,.55);
+  }
+
+  /* ── SHELL + MAIN ────────── */
+  .shell { display: block; }
+  .main  { min-height: 100dvh; }
+
+  /* ── TOP BAR ─────────────── */
+  .topbar {
+    padding: 10px 14px;
+    gap: 8px;
+  }
+  .mobile-menu-btn    { display: flex; }
+  .theme-switcher     { display: none; }
+  .topbar-session-badge { display: none; }
+  .topbar .btn-primary.btn-sm { font-size: 12px; padding: 7px 10px; min-height: 38px; }
+
+  /* ── VIEWS ───────────────── */
+  .view { padding: 14px; }
+
+  /* ── SECTION ─────────────── */
+  .section-title { font-size: 17px; }
+
+  /* ── GRIDS ───────────────── */
+  .grid-4 { grid-template-columns: 1fr 1fr; gap: 10px; }
+  .grid-3 { grid-template-columns: 1fr; }
+  .grid-2 { grid-template-columns: 1fr; }
+
+  /* ── KPI / STAT CARDS ────── */
+  .stat-value { font-size: 26px; }
+
+  /* ── TOUCH TARGETS ───────── */
+  .btn    { min-height: 44px; }
+  .btn-sm { min-height: 36px; padding: 6px 12px; font-size: 12px; }
+  .btn-lg { min-height: 48px; }
+  .nav-item { min-height: 44px; }
+  .chip     { min-height: 36px; display: inline-flex; align-items: center; }
+  .tab, .src-tab, .tgt-mode-btn { min-height: 38px; display: flex; align-items: center; justify-content: center; }
+
+  /* ── GATE BANNER ─────────── */
+  .gate-banner {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px;
+  }
+  .gate-banner > .btn { width: 100%; justify-content: center; }
+
+  /* ── PROVIDER PILLS ──────── */
+  .provider-pills { flex-wrap: wrap; }
+  .provider-pill  { flex: 1 1 calc(50% - 8px); min-height: 44px; }
+
+  /* ── TAB BARS ────────────── */
+  .src-tab-bar  { flex-wrap: wrap; gap: 4px; }
+  .tgt-mode-bar { flex-wrap: wrap; gap: 4px; }
+  .src-tab, .tgt-mode-btn { flex: 1 1 calc(50% - 4px); text-align: center; }
+
+  /* ── FILTER CHIPS ────────── */
+  .filter-chips { flex-wrap: wrap; gap: 6px; }
+
+  /* ── MAPPING TOOLBAR ─────── */
+  .mapping-toolbar { flex-wrap: wrap; gap: 6px; }
+  .mapping-toolbar h3 { flex: 1 1 100%; margin: 0; }
+  #mappingSearch { width: 100% !important; flex: 1 1 100%; order: 10; margin-top: 4px; }
+
+  /* ── TABLE SCROLL ────────── */
+  .tbl-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  table.mapping { min-width: 680px; }
+  .mapping-wrap { overflow: visible; border-radius: 12px; }
+  .mapping-wrap .tbl-scroll { border-radius: 0; }
+
+  /* ── RECON ROW ───────────── */
+  .recon-row { flex-wrap: wrap; gap: 8px; }
+  .recon-row > input.field-input { flex: 1 1 100%; }
+
+  /* ── SESSION ROW ─────────── */
+  .session-row { flex-wrap: wrap; gap: 10px; }
+
+  /* ── CARD HEADER ─────────── */
+  .card-header { flex-wrap: wrap; }
+
+  /* ── TOAST ───────────────── */
+  .toast-stack { bottom: 16px; right: 16px; left: 16px; }
+  .toast       { min-width: unset; width: 100%; }
+
+  /* ── CODE / SQL ──────────── */
+  .code-block  { font-size: 11px; }
+  .code-header { flex-wrap: wrap; gap: 8px; }
+
+  /* ── DROPZONE ────────────── */
+  .dropzone { padding: 24px 16px; }
+  .dropzone-icon { font-size: 28px; }
+
+  /* ── SUMMARY BADGES ROW ──── */
+  .card-header [style*="margin-left:auto"] { flex-wrap: wrap; }
+
+  /* ── CONF BAR ────────────── */
+  .conf-wrap { min-width: 80px; }
+
+  /* ── LIVE LOG HEIGHT ─────── */
+  .live-log { height: 180px; }
+}
+
+@media (max-width: 480px) {
+  .view          { padding: 12px; }
+  .section-title { font-size: 15px; }
+  .stat-value    { font-size: 20px; }
+  .grid-4        { grid-template-columns: 1fr 1fr; gap: 8px; }
+  .topbar-breadcrumb {
+    font-size: 12px;
+    max-width: 110px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .provider-pill { flex: 1 1 100%; }
+  .card-body     { padding: 14px; }
+}
 </style>
 </head>
 <body>
@@ -709,8 +886,11 @@ select.cell-edit{
 <div class="toast-stack" id="toastStack"></div>
 
 <div class="shell">
+<!-- ─── SIDEBAR SCRIM (mobile) ──────────────── -->
+<div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
+
 <!-- ─── SIDEBAR ─────────────────────────────── -->
-<nav class="sidebar">
+<nav class="sidebar" id="appSidebar">
   <div class="sidebar-brand">
     <div class="brand-logo">
       <div class="brand-icon">🗺</div>
@@ -755,8 +935,14 @@ select.cell-edit{
   </div>
 
   <div class="sidebar-footer">
-    <div id="sidebarStatus">
+    <div id="sidebarStatus" style="margin-bottom:8px">
       <span class="status-dot dot-gray"></span>No active session
+    </div>
+    <!-- Mobile-only theme access -->
+    <div class="mobile-theme-row" style="display:flex;gap:4px;flex-wrap:wrap">
+      <button class="btn btn-ghost btn-sm" style="flex:1;font-size:11px;padding:4px 6px;min-height:32px" onclick="setTheme('default');closeSidebar()">🎮</button>
+      <button class="btn btn-ghost btn-sm" style="flex:1;font-size:11px;padding:4px 6px;min-height:32px" onclick="setTheme('executive');closeSidebar()">💼</button>
+      <button class="btn btn-ghost btn-sm" style="flex:1;font-size:11px;padding:4px 6px;min-height:32px" onclick="setTheme('stakeholder');closeSidebar()">📊</button>
     </div>
   </div>
 </nav>
@@ -765,6 +951,7 @@ select.cell-edit{
 <div class="main">
   <!-- TOP BAR -->
   <div class="topbar">
+    <button class="mobile-menu-btn" onclick="toggleSidebar()" aria-label="Open menu">☰</button>
     <div class="topbar-breadcrumb">DataMapper / <b id="topbarPage">Dashboard</b></div>
     <div class="topbar-spacer"></div>
 
@@ -884,7 +1071,7 @@ select.cell-edit{
     </div>
 
     <!-- Quick actions -->
-    <div style="margin-top:20px;display:flex;gap:12px;flex-wrap:wrap">
+    <div style="margin-top:20px;display:flex;gap:12px;flex-wrap:wrap" class="quick-actions">
       <button class="btn btn-primary btn-lg" onclick="switchView('setup', document.querySelector('[data-view=setup]'))">
         ▶ Start New Mapping Session
       </button>
@@ -1087,7 +1274,7 @@ select.cell-edit{
         </div>
       </div>
 
-      <div style="margin-top:16px;display:flex;gap:10px">
+      <div class="btn-row">
         <button class="btn btn-primary btn-lg" id="nextToBQ" onclick="goToBQ()" disabled>
           Next: Configure Target →
         </button>
@@ -1199,7 +1386,7 @@ select.cell-edit{
         </div>
       </div>
 
-      <div style="margin-top:16px;display:flex;gap:10px">
+      <div class="btn-row">
         <button class="btn btn-ghost" onclick="switchView('setup',document.querySelector('[data-view=setup]'))">← Back</button>
         <button class="btn btn-primary btn-lg" onclick="switchView('run',document.querySelector('[data-view=run]'))">
           Next: Run Agentic Pipeline →
@@ -1286,7 +1473,7 @@ select.cell-edit{
         </div>
       </div>
 
-      <div style="margin-top:16px;display:flex;gap:10px">
+      <div class="btn-row">
         <button class="btn btn-ghost" onclick="switchView('bq',document.querySelector('[data-view=bq]'))">← Back</button>
         <button class="btn btn-primary btn-lg" id="runBtn" onclick="startPipeline()">
           ▶ Run Agentic Mapping
@@ -1446,7 +1633,7 @@ select.cell-edit{
       <div class="card" style="margin-bottom:20px">
         <div class="card-header"><span class="card-icon">🌐</span><span class="card-title">Global Configuration (from .env)</span></div>
         <div class="card-body">
-          <div id="globalConfigDisplay" style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div id="globalConfigDisplay" class="grid-2" style="gap:12px">
             <div class="field"><div class="field-label">Default Provider</div><div id="gc-provider" style="color:var(--cyan);font-family:var(--mono);font-size:13px">—</div></div>
             <div class="field"><div class="field-label">Claude Model</div><div id="gc-claude" style="color:var(--orange);font-family:var(--mono);font-size:13px">—</div></div>
             <div class="field"><div class="field-label">Anthropic Key</div><div id="gc-akey" style="font-size:13px">—</div></div>
@@ -1560,8 +1747,28 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 });
 
+// ─── MOBILE SIDEBAR TOGGLE ─────────────────────────────
+function openSidebar() {
+  document.getElementById('appSidebar').classList.add('mobile-open');
+  document.getElementById('sidebarOverlay').classList.add('mobile-open');
+  document.body.style.overflow = 'hidden';
+}
+function closeSidebar() {
+  document.getElementById('appSidebar').classList.remove('mobile-open');
+  document.getElementById('sidebarOverlay').classList.remove('mobile-open');
+  document.body.style.overflow = '';
+}
+function toggleSidebar() {
+  const sidebar = document.getElementById('appSidebar');
+  if (sidebar.classList.contains('mobile-open')) closeSidebar();
+  else openSidebar();
+}
+// Close sidebar on swipe-left or Escape key
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSidebar(); });
+
 // ─── NAV ───────────────────────────────────────────────
 function switchView(name, el) {
+  closeSidebar(); // Always close mobile sidebar on nav
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
   document.getElementById(`view-${name}`).classList.add('active');
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
