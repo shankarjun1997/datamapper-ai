@@ -1578,7 +1578,8 @@ select.cell-edit{
 
 <script>
 // ─── STATE ─────────────────────────────────────────────
-const API = 'http://localhost:7788';
+// API base URL — override via window.DM_API_URL (set by Vercel env) or defaults to localhost
+const API = (typeof window !== 'undefined' && window.DM_API_URL) || window.__DM_API_URL__ || 'http://localhost:7788';
 let currentSession  = null;   // session object
 let allMappings     = [];
 let filterMode      = 'all';

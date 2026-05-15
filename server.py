@@ -43,11 +43,11 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 logger = logging.getLogger("datamapper")
 
 # ── Global config (overridable per-session via user API keys) ──────────────
-_DEFAULT_PROVIDER   = os.getenv("DM_PROVIDER", "claude")        # claude | deepseek | custom
+_DEFAULT_PROVIDER   = os.getenv("DM_PROVIDER", "deepseek")      # deepseek | claude | custom
 _ANTHROPIC_API_KEY  = os.getenv("ANTHROPIC_API_KEY", "")
 _DEEPSEEK_API_KEY   = os.getenv("LLM_API_KEY", "")
 _DEEPSEEK_BASE_URL  = os.getenv("LLM_BASE_URL", "https://api.deepseek.com/v1")
-_DEEPSEEK_MODEL     = os.getenv("LLM_MODEL", "deepseek-chat")
+_DEEPSEEK_MODEL     = os.getenv("LLM_MODEL", "deepseek-chat")   # deepseek-chat = V3 (fast + cheap)
 _CLAUDE_MODEL       = os.getenv("DM_CLAUDE_MODEL", "claude-sonnet-4-6")
 _BQ_PROJECT         = os.getenv("BQ_PROJECT_ID", "")
 _BQ_DATASET         = os.getenv("BQ_DATASET", "")

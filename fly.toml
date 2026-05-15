@@ -3,7 +3,7 @@
 # Free tier: shared-cpu-1x, 256MB RAM
 
 app = "datamapper-ai"
-primary_region = "sin"   # Singapore — closest to India
+primary_region = "maa"
 
 [build]
   dockerfile = "Dockerfile"
