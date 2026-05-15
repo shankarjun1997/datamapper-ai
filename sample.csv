@@ -1,0 +1,8 @@
+ customer_id,full_name,email,signup_date,is_active,lifetime_value
+ 1001,Alice Adams,alice@acme.com,2024-01-15,true,1240.50
+ 1002,Bob Brown,bob@acme.com,2024-02-01,true,89.00
+ 1003,Carol Chen,carol@acme.com,2024-02-09,false,0.00
+ 1004,Dave Davies,dave@acme.com,2024-03-20,true,540.75
+ 1005,Eve Edwards,eve@acme.com,2024-04-02,true,12500.00
+ 1004,Dave Davies,dave@acme.com,2024-03-20,true,540.75
+ 1005,Eve Edwards,eve@acme.com,2024-04-02,true,12500.0

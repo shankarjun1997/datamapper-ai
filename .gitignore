@@ -1,0 +1,58 @@
+# ── Environment & Secrets ──────────────────────────────────
+.env
+.env.*
+*.env
+secrets/
+gcp_json_key/
+*service-account*.json
+*credentials*.json
+
+# ── Python ─────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.hypothesis/
+
+# ── Virtual environments ────────────────────────────────────
+venv/
+.venv/
+env/
+ENV/
+
+# ── macOS ──────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# ── IDEs ───────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ── Session data (runtime only) ────────────────────────────
+sessions/
+uploads/
+outputs/
+
+# ── Logs ───────────────────────────────────────────────────
+*.log
+logs/
