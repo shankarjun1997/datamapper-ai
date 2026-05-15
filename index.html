@@ -682,6 +682,25 @@ select.cell-edit{
 .blink{animation:blink 1.2s infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 .spin{display:inline-block;animation:spin .8s linear infinite}
+
+/* ── SOURCE TAB BAR ─────────────────────────────────────── */
+.src-tab-bar{display:flex;gap:2px;background:var(--bg-3);border-radius:8px;padding:3px;margin-bottom:16px}
+.src-tab{padding:7px 18px;border-radius:6px;font-size:13px;font-weight:600;color:var(--text-2);cursor:pointer;transition:all .15s}
+.src-tab.active{background:var(--bg-2);color:var(--cyan);box-shadow:0 2px 8px rgba(0,0,0,.4)}
+
+/* ── TARGET MODE TOGGLE ─────────────────────────────────── */
+.tgt-mode-bar{display:flex;gap:2px;background:var(--bg-3);border-radius:8px;padding:3px;margin-bottom:18px}
+.tgt-mode-btn{padding:7px 18px;border-radius:6px;font-size:13px;font-weight:600;color:var(--text-2);cursor:pointer;transition:all .15s}
+.tgt-mode-btn.active{background:var(--bg-2);color:var(--cyan);box-shadow:0 2px 8px rgba(0,0,0,.4)}
+
+/* ── COLLAPSIBLE ────────────────────────────────────────── */
+.collapsible-header{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;padding:8px 0;color:var(--text-2);font-size:13px;font-weight:600}
+.collapsible-header:hover{color:var(--text-1)}
+.collapsible-arrow{transition:transform .2s;font-size:11px}
+.collapsible-body{overflow:hidden;transition:max-height .3s ease}
+
+/* ── SUMMARY DISPLAY ────────────────────────────────────── */
+.summary-box{background:var(--bg-0);border:1px solid var(--border);border-radius:8px;padding:16px;font-size:13px;color:var(--text-1);line-height:1.7;white-space:pre-wrap;min-height:80px;max-height:400px;overflow-y:auto}
 </style>
 </head>
 <body>
@@ -727,6 +746,9 @@ select.cell-edit{
     </div>
     <div class="nav-item" data-view="export" onclick="switchView('export',this)">
       <span class="nav-item-icon">📦</span> Export
+    </div>
+    <div class="nav-item" data-view="audit" onclick="switchView('audit',this)">
+      <span class="nav-item-icon">📋</span> Audit Trail
     </div>
 
     <div class="nav-group-label" style="margin-top:8px">Config</div>
@@ -898,30 +920,151 @@ select.cell-edit{
   <div class="view" id="view-setup">
     <div class="section-head">
       <div class="section-title">① Upload Source Schema</div>
-      <div class="section-sub">Upload your source schema as Excel (.xlsx) or CSV. Required columns: Field/Column Name, Data Type. Optional: Sample Value, Nullable.</div>
+      <div class="section-sub">Upload your source schema as Excel (.xlsx) or CSV, or connect directly to a source database.</div>
     </div>
 
-    <div style="max-width:640px">
-      <!-- Dropzone -->
+    <div style="max-width:680px">
+
+      <!-- Session Context Card -->
       <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
+          <span class="card-icon">📝</span>
+          <span class="card-title">Session Context (Optional)</span>
+        </div>
         <div class="card-body">
-          <div class="dropzone" id="dropzone"
-               ondragover="dz_dragover(event)" ondragleave="dz_dragleave(event)" ondrop="dz_drop(event)"
-               onclick="document.getElementById('fileInput').click()">
-            <div class="dropzone-icon">📄</div>
-            <div class="dropzone-title" id="dzTitle">Drop your schema file here</div>
-            <div class="dropzone-sub" id="dzSub">or <span style="color:var(--cyan)">browse files</span></div>
-            <div class="dropzone-formats">
-              <span class="badge badge-gray">XLSX</span>
-              <span class="badge badge-gray">XLS</span>
-              <span class="badge badge-gray">CSV</span>
+          <div class="grid-2" style="gap:14px;margin-bottom:14px">
+            <div class="field">
+              <label class="field-label">Session Name</label>
+              <input class="field-input" id="sessionName" placeholder="e.g. Oracle HR to BQ Warehouse">
             </div>
           </div>
-          <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleFileSelect(this.files[0])">
+          <div class="field" style="margin-bottom:14px">
+            <label class="field-label">Custom Instructions</label>
+            <textarea class="field-input" id="sessionInstructions" rows="3"
+              placeholder="E.g. Prefer snake_case target column names. Treat NULL as empty string. Source is a legacy Oracle system."></textarea>
+            <span class="field-hint">Instructions are injected into the LLM mapping prompt on every run</span>
+          </div>
+
+          <!-- Jira collapsible -->
+          <div style="border-top:1px solid var(--border);padding-top:14px">
+            <div class="collapsible-header" onclick="toggleJira()">
+              <span style="font-size:16px">🎟</span>
+              <span>Jira Integration (Optional)</span>
+              <span class="collapsible-arrow" id="jiraArrow">▶</span>
+            </div>
+            <div class="collapsible-body" id="jiraBody" style="max-height:0">
+              <div style="padding-top:12px">
+                <div class="grid-2" style="gap:12px;margin-bottom:12px">
+                  <div class="field">
+                    <label class="field-label">Jira Base URL</label>
+                    <input class="field-input" id="jiraUrl" placeholder="https://yourco.atlassian.net">
+                  </div>
+                  <div class="field">
+                    <label class="field-label">Jira Email</label>
+                    <input class="field-input" id="jiraEmail" placeholder="you@company.com">
+                  </div>
+                </div>
+                <div class="grid-2" style="gap:12px;margin-bottom:12px">
+                  <div class="field">
+                    <label class="field-label">Jira API Token</label>
+                    <input class="field-input" id="jiraToken" type="password" placeholder="Your Jira API token">
+                  </div>
+                  <div class="field">
+                    <label class="field-label">Jira Ticket URL</label>
+                    <input class="field-input" id="jiraTicket" placeholder="https://yourco.atlassian.net/browse/DE-123">
+                  </div>
+                </div>
+                <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px">
+                  <button class="btn btn-cyan btn-sm" onclick="fetchJiraContext()">⚡ Fetch Jira Context</button>
+                  <span id="jiraStatus" style="font-size:12px;color:var(--text-3)"></span>
+                </div>
+                <div id="jiraContextResult" style="display:none" class="card" style="background:var(--bg-3)">
+                  <div class="card-body" style="padding:12px;font-size:12px;color:var(--text-2)" id="jiraContextBody"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div style="margin-top:14px">
+            <button class="btn btn-ghost btn-sm" onclick="saveSessionContext()">💾 Save Context</button>
+          </div>
         </div>
       </div>
 
-      <!-- Parsed preview -->
+      <!-- Source type tab bar -->
+      <div class="src-tab-bar">
+        <div class="src-tab active" id="srcTab-file" onclick="setSrcTab('file')">📄 File Upload</div>
+        <div class="src-tab" id="srcTab-db" onclick="setSrcTab('db')">🔌 Database Connection</div>
+      </div>
+
+      <!-- File upload panel -->
+      <div id="srcPanel-file">
+        <!-- Dropzone -->
+        <div class="card" style="margin-bottom:20px">
+          <div class="card-body">
+            <div class="dropzone" id="dropzone"
+                 ondragover="dz_dragover(event)" ondragleave="dz_dragleave(event)" ondrop="dz_drop(event)"
+                 onclick="document.getElementById('fileInput').click()">
+              <div class="dropzone-icon">📄</div>
+              <div class="dropzone-title" id="dzTitle">Drop your schema file here</div>
+              <div class="dropzone-sub" id="dzSub">or <span style="color:var(--cyan)">browse files</span></div>
+              <div class="dropzone-formats">
+                <span class="badge badge-gray">XLSX</span>
+                <span class="badge badge-gray">XLS</span>
+                <span class="badge badge-gray">CSV</span>
+              </div>
+            </div>
+            <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleFileSelect(this.files[0])">
+          </div>
+        </div>
+      </div>
+
+      <!-- DB Connection panel -->
+      <div id="srcPanel-db" style="display:none">
+        <div class="card" style="margin-bottom:20px">
+          <div class="card-header">
+            <span class="card-icon">🔌</span>
+            <span class="card-title">Source Database Connection</span>
+          </div>
+          <div class="card-body">
+            <div class="grid-2" style="gap:14px;margin-bottom:14px">
+              <div class="field">
+                <label class="field-label">Database Type</label>
+                <select class="field-input" id="dbType" onchange="updateConnExample()">
+                  <option value="postgres">PostgreSQL</option>
+                  <option value="mysql">MySQL</option>
+                  <option value="mssql">SQL Server / Azure SQL</option>
+                  <option value="snowflake">Snowflake</option>
+                  <option value="databricks">Databricks</option>
+                  <option value="oracle">Oracle Exadata</option>
+                  <option value="redshift">Amazon Redshift</option>
+                  <option value="teradata">Teradata</option>
+                </select>
+              </div>
+              <div class="field">
+                <label class="field-label">Schema Filter <span style="font-weight:400;color:var(--text-3)">(optional)</span></label>
+                <input class="field-input" id="dbSchemaFilter" placeholder="public, dbo, MYSCHEMA">
+                <span class="field-hint">Comma-separated schema names to limit discovery</span>
+              </div>
+            </div>
+            <div class="field" style="margin-bottom:14px">
+              <label class="field-label">Connection String</label>
+              <textarea class="field-input" id="dbConnStr" rows="2" style="font-family:var(--mono);font-size:12px"
+                placeholder="postgresql+psycopg2://user:password@host:5432/dbname"></textarea>
+              <span class="field-hint" id="dbConnHint">Format: postgresql+psycopg2://user:password@host:5432/dbname</span>
+            </div>
+            <div class="field" style="margin-bottom:14px">
+              <label class="field-label">Table Filter <span style="font-weight:400;color:var(--text-3)">(optional)</span></label>
+              <input class="field-input" id="dbTableFilter" placeholder="orders, customers, products">
+              <span class="field-hint">Comma-separated table names (blank = discover all)</span>
+            </div>
+            <button class="btn btn-cyan" onclick="connectSourceDB()">🔌 Test &amp; Discover Schema</button>
+            <span id="dbConnStatus" style="font-size:12px;color:var(--text-3);margin-left:10px"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Parsed preview (shared between file and DB) -->
       <div id="schemaPreview" style="display:none" class="card">
         <div class="card-header">
           <span class="card-icon">✅</span>
@@ -948,8 +1091,8 @@ select.cell-edit{
       </div>
 
       <div style="margin-top:16px;display:flex;gap:10px">
-        <button class="btn btn-primary btn-lg" id="nextToBQ" onclick="switchView('bq',document.querySelector('[data-view=bq]'))" disabled>
-          Next: Configure BQ Target →
+        <button class="btn btn-primary btn-lg" id="nextToBQ" onclick="goToBQ()" disabled>
+          Next: Configure Target →
         </button>
       </div>
     </div>
@@ -958,56 +1101,103 @@ select.cell-edit{
   <!-- ── VIEW: BQ CONFIG ────────────────── -->
   <div class="view" id="view-bq">
     <div class="section-head">
-      <div class="section-title">② BigQuery Target Configuration</div>
-      <div class="section-sub">Configure the GCP project and dataset to crawl for target tables.</div>
+      <div class="section-title">② Target Configuration</div>
+      <div class="section-sub">Choose BigQuery as target or upload custom target schema CSV files.</div>
     </div>
 
-    <div style="max-width:560px">
-      <div class="card">
-        <div class="card-header">
-          <span class="card-icon">☁</span>
-          <span class="card-title">Google BigQuery Connection</span>
-          <span class="badge badge-gray" id="bqStatusBadge">Not connected</span>
+    <div style="max-width:600px">
+
+      <!-- Target mode toggle -->
+      <div style="margin-bottom:6px;font-size:12px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:.5px">Target Source</div>
+      <div class="tgt-mode-bar">
+        <div class="tgt-mode-btn active" id="tgtBtn-bq" onclick="setTargetMode('bq')">☁ BigQuery</div>
+        <div class="tgt-mode-btn" id="tgtBtn-files" onclick="setTargetMode('files')">📁 Custom Files</div>
+      </div>
+
+      <!-- BQ panel -->
+      <div id="tgtPanel-bq">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-icon">☁</span>
+            <span class="card-title">Google BigQuery Connection</span>
+            <span class="badge badge-gray" id="bqStatusBadge">Not connected</span>
+          </div>
+          <div class="card-body">
+            <div class="grid-2" style="gap:14px;margin-bottom:14px">
+              <div class="field">
+                <label class="field-label">GCP Project ID *</label>
+                <input class="field-input" id="bqProject" placeholder="analytics-prod-442">
+              </div>
+              <div class="field">
+                <label class="field-label">BigQuery Dataset *</label>
+                <input class="field-input" id="bqDataset" placeholder="warehouse_core">
+              </div>
+            </div>
+            <div class="grid-2" style="gap:14px;margin-bottom:14px">
+              <div class="field">
+                <label class="field-label">Region</label>
+                <select class="field-input" id="bqRegion">
+                  <option>us-central1</option>
+                  <option>us-east1</option>
+                  <option>europe-west1</option>
+                  <option>asia-south1</option>
+                  <option>asia-east1</option>
+                </select>
+              </div>
+              <div class="field">
+                <label class="field-label">Target Tables Filter</label>
+                <input class="field-input" id="bqFilter" placeholder="dim_customer, fact_orders… (blank = all)">
+                <span class="field-hint">Comma-separated table names to limit crawl scope</span>
+              </div>
+            </div>
+            <div class="field" style="margin-bottom:14px">
+              <label class="field-label">Service Account Key (JSON path)</label>
+              <input class="field-input" id="bqCreds" placeholder="/path/to/service-account.json (leave blank for ADC)">
+              <span class="field-hint">Optional — uses Application Default Credentials if not provided</span>
+            </div>
+            <div style="display:flex;gap:10px">
+              <button class="btn btn-ghost" onclick="saveBQConfig()">Save Config</button>
+              <button class="btn btn-cyan btn-sm" onclick="testBQ()">⚡ Test Connection &amp; Crawl</button>
+            </div>
+            <div id="bqTestResult" style="margin-top:12px;display:none" class="card">
+              <div class="card-body" style="padding:12px;font-size:13px" id="bqTestMsg"></div>
+            </div>
+          </div>
         </div>
-        <div class="card-body">
-          <div class="grid-2" style="gap:14px;margin-bottom:14px">
-            <div class="field">
-              <label class="field-label">GCP Project ID *</label>
-              <input class="field-input" id="bqProject" placeholder="analytics-prod-442">
-            </div>
-            <div class="field">
-              <label class="field-label">BigQuery Dataset *</label>
-              <input class="field-input" id="bqDataset" placeholder="warehouse_core">
-            </div>
+      </div>
+
+      <!-- Custom files panel -->
+      <div id="tgtPanel-files" style="display:none">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-icon">📁</span>
+            <span class="card-title">Custom Target Schema Files</span>
+            <span class="badge badge-gray" id="tgtFilesStatusBadge">No files</span>
           </div>
-          <div class="grid-2" style="gap:14px;margin-bottom:14px">
-            <div class="field">
-              <label class="field-label">Region</label>
-              <select class="field-input" id="bqRegion">
-                <option>us-central1</option>
-                <option>us-east1</option>
-                <option>europe-west1</option>
-                <option>asia-south1</option>
-                <option>asia-east1</option>
-              </select>
+          <div class="card-body">
+            <p style="font-size:13px;color:var(--text-2);margin-bottom:14px">
+              Upload one CSV file per target table. Each CSV must have at least a <code style="color:var(--cyan)">column_name</code> column. Optionally include <code style="color:var(--cyan)">data_type</code> and <code style="color:var(--cyan)">is_nullable</code>.
+            </p>
+            <div class="dropzone" id="targetFilesDropzone"
+                 ondragover="tgtDz_dragover(event)" ondragleave="tgtDz_dragleave(event)" ondrop="tgtDz_drop(event)"
+                 onclick="document.getElementById('targetFilesInput').click()" style="margin-bottom:14px">
+              <div class="dropzone-icon">📁</div>
+              <div class="dropzone-title">Drop target schema CSVs here</div>
+              <div class="dropzone-sub">One file per target table · <span style="color:var(--cyan)">browse files</span></div>
+              <div class="dropzone-formats">
+                <span class="badge badge-gray">CSV</span>
+                <span class="badge badge-gray">Multiple files</span>
+              </div>
             </div>
-            <div class="field">
-              <label class="field-label">Target Tables Filter</label>
-              <input class="field-input" id="bqFilter" placeholder="dim_customer, fact_orders… (blank = all)">
-              <span class="field-hint">Comma-separated table names to limit crawl scope</span>
+            <input type="file" id="targetFilesInput" accept=".csv" multiple style="display:none" onchange="uploadTargetFiles(this.files)">
+            <div id="targetFilesList" style="margin-bottom:12px;display:none">
+              <div style="font-size:12px;font-weight:600;color:var(--text-3);margin-bottom:6px">Staged files:</div>
+              <div id="targetFilesItems"></div>
             </div>
-          </div>
-          <div class="field" style="margin-bottom:14px">
-            <label class="field-label">Service Account Key (JSON path)</label>
-            <input class="field-input" id="bqCreds" placeholder="/path/to/service-account.json (leave blank for ADC)">
-            <span class="field-hint">Optional — uses Application Default Credentials if not provided</span>
-          </div>
-          <div style="display:flex;gap:10px">
-            <button class="btn btn-ghost" onclick="saveBQConfig()">Save Config</button>
-            <button class="btn btn-cyan btn-sm" onclick="testBQ()">⚡ Test Connection & Crawl</button>
-          </div>
-          <div id="bqTestResult" style="margin-top:12px;display:none" class="card" style="background:var(--bg-3)">
-            <div class="card-body" style="padding:12px;font-size:13px" id="bqTestMsg"></div>
+            <button class="btn btn-cyan" onclick="document.getElementById('targetFilesInput').click()">📁 Select CSV Files</button>
+            <div id="tgtFilesResult" style="margin-top:12px;display:none" class="card">
+              <div class="card-body" style="padding:12px;font-size:13px" id="tgtFilesMsg"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -1178,11 +1368,33 @@ select.cell-edit{
   <!-- ── VIEW: EXPORT ───────────────────── -->
   <div class="view" id="view-export">
     <div class="section-head">
-      <div class="section-title">⑤ Export & Code Generation</div>
+      <div class="section-title">⑤ Export &amp; Code Generation</div>
       <div class="section-sub">Export the approved mapping as CSV or materialized BigQuery SQL.</div>
     </div>
 
     <div style="max-width:720px">
+
+      <!-- Session Intelligence card -->
+      <div class="card" style="margin-bottom:24px">
+        <div class="card-header">
+          <span class="card-icon">🧠</span>
+          <span class="card-title">Session Intelligence</span>
+          <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+            <span class="badge badge-cyan" id="sumStat-total" style="display:none"></span>
+            <span class="badge badge-green" id="sumStat-mapped" style="display:none"></span>
+            <span class="badge badge-orange" id="sumStat-review" style="display:none"></span>
+            <span class="badge badge-red" id="sumStat-unmapped" style="display:none"></span>
+          </div>
+          <button class="btn btn-cyan btn-sm" onclick="loadSummary()" style="margin-left:8px">🧠 Generate Summary</button>
+        </div>
+        <div class="card-body">
+          <div id="summaryDisplay" class="summary-box" style="display:none"></div>
+          <div id="summaryPlaceholder" style="font-size:13px;color:var(--text-3);text-align:center;padding:20px">
+            Click "Generate Summary" to get an AI-generated overview of this mapping session.
+          </div>
+        </div>
+      </div>
+
       <div class="grid-3" style="margin-bottom:24px">
         <div class="card" style="cursor:pointer" onclick="exportCSV()">
           <div class="card-body" style="text-align:center;padding:28px 18px">
@@ -1222,6 +1434,20 @@ select.cell-edit{
           <span style="color:var(--text-3)">// SQL will appear here after Gate 2 approval and SQL generation…</span>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- ── VIEW: AUDIT TRAIL ─────────────── -->
+  <div class="view" id="view-audit">
+    <div class="section-head">
+      <div class="section-title">📋 Audit Trail</div>
+      <div class="section-sub">Every Gate 2 approval is automatically recorded with a full mapping snapshot and CSV export.</div>
+    </div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <button class="btn btn-ghost btn-sm" onclick="loadAuditTrail()">↻ Refresh</button>
+    </div>
+    <div id="auditList">
+      <div style="color:var(--text-3);text-align:center;padding:48px">No audit records yet. Approve a mapping session to create the first entry.</div>
     </div>
   </div>
 
@@ -1322,6 +1548,28 @@ select.cell-edit{
           </div>
         </div>
       </div>
+
+      <!-- Slack Integration -->
+      <div class="card" style="margin-top:20px">
+        <div class="card-header"><span class="card-icon">💬</span><span class="card-title">Slack Integration</span>
+          <span class="badge badge-gray" id="slackStatus">Not configured</span>
+        </div>
+        <div class="card-body">
+          <p style="font-size:13px;color:var(--text-2);margin-bottom:16px">
+            Receive notifications when mappings complete, Gate 2 is approved, SQL is ready, and exports are triggered.
+          </p>
+          <div class="field" style="margin-bottom:12px">
+            <label class="field-label">Slack Webhook URL</label>
+            <input class="field-input" id="slackWebhook" type="password" placeholder="https://hooks.slack.com/services/...">
+            <span class="field-hint">Create an Incoming Webhook at <a href="https://api.slack.com/apps" target="_blank">api.slack.com/apps</a></span>
+          </div>
+          <div class="field" style="margin-bottom:16px">
+            <label class="field-label">Channel</label>
+            <input class="field-input" value="#datamapper-ai-alerts" readonly style="opacity:.6;cursor:not-allowed">
+          </div>
+          <button class="btn btn-primary" onclick="saveSlackConfig()">Save &amp; Test</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1330,7 +1578,8 @@ select.cell-edit{
 
 <script>
 // ─── STATE ─────────────────────────────────────────────
-const API = 'http://localhost:7788';
+// API base URL — override via window.DM_API_URL (set by Vercel env) or defaults to localhost
+const API = (typeof window !== 'undefined' && window.DM_API_URL) || window.__DM_API_URL__ || 'http://localhost:7788';
 let currentSession  = null;   // session object
 let allMappings     = [];
 let filterMode      = 'all';
@@ -1349,6 +1598,14 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (r.id) { currentSession = r; updateSessionUI(); }
     } catch {}
   }
+  // Restore Slack webhook from localStorage
+  const savedWebhook = localStorage.getItem('dm_slack_webhook');
+  if (savedWebhook) {
+    const webhookEl = document.getElementById('slackWebhook');
+    if (webhookEl) webhookEl.value = savedWebhook;
+    const statusEl = document.getElementById('slackStatus');
+    if (statusEl) { statusEl.className = 'badge badge-green'; statusEl.textContent = '✓ Configured'; }
+  }
 });
 
 // ─── NAV ───────────────────────────────────────────────
@@ -1360,17 +1617,24 @@ function switchView(name, el) {
   document.getElementById('topbarPage').textContent =
     {dashboard:'Dashboard',sessions:'Sessions',setup:'Upload Schema',
      bq:'BQ Target',run:'Run Pipeline',mappings:'Mapping Table',
-     export:'Export',settings:'API Settings'}[name] || name;
+     export:'Export',audit:'Audit Trail',settings:'API Settings'}[name] || name;
 
   if (name === 'mappings') { loadMappings(); }
   if (name === 'export')   { loadSQL(); }
   if (name === 'run')      { updateRunView(); }
   if (name === 'sessions') { loadSessions(); }
+  if (name === 'audit')    { loadAuditTrail(); }
 }
 
 // ─── SESSION ────────────────────────────────────────────
 async function newSession() {
-  const r = await apiFetch('/api/sessions', 'POST');
+  const nameEl  = document.getElementById('sessionName');
+  const instrEl = document.getElementById('sessionInstructions');
+  const body = {
+    name:         nameEl  ? nameEl.value.trim()  || null : null,
+    instructions: instrEl ? instrEl.value.trim() || null : null,
+  };
+  const r = await apiFetch('/api/sessions', 'POST', body);
   currentSession = r;
   localStorage.setItem('dm_session_id', r.session_id);
   currentSession.id = r.session_id;
@@ -1981,6 +2245,342 @@ function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'
 function fmtDate(iso) {
   if (!iso) return '';
   try { return new Date(iso).toLocaleString(); } catch { return iso; }
+}
+
+// ─── FEATURE 1: JIRA + SESSION CONTEXT ───────────────────
+
+function toggleJira() {
+  const body = document.getElementById('jiraBody');
+  const arrow = document.getElementById('jiraArrow');
+  const isOpen = body.style.maxHeight !== '0px' && body.style.maxHeight !== '';
+  if (isOpen) {
+    body.style.maxHeight = '0';
+    arrow.textContent = '▶';
+  } else {
+    body.style.maxHeight = body.scrollHeight + 'px';
+    arrow.textContent = '▼';
+  }
+}
+
+// Fix: recalculate height after content changes
+function _updateJiraHeight() {
+  const body = document.getElementById('jiraBody');
+  if (body.style.maxHeight && body.style.maxHeight !== '0px') {
+    body.style.maxHeight = body.scrollHeight + 'px';
+  }
+}
+
+async function fetchJiraContext() {
+  if (!currentSession) {
+    const r = await apiFetch('/api/sessions', 'POST', {
+      name: document.getElementById('sessionName').value.trim() || null,
+      instructions: document.getElementById('sessionInstructions').value.trim() || null,
+    });
+    currentSession = r;
+    currentSession.id = r.session_id;
+    localStorage.setItem('dm_session_id', r.session_id);
+    updateSessionUI();
+  }
+  const sid = currentSession.id || currentSession.session_id;
+  const statusEl = document.getElementById('jiraStatus');
+  statusEl.textContent = 'Fetching…';
+  statusEl.style.color = 'var(--cyan)';
+  try {
+    const r = await apiFetch(`/api/sessions/${sid}/jira-context`, 'POST', {
+      jira_url:   document.getElementById('jiraUrl').value.trim(),
+      jira_email: document.getElementById('jiraEmail').value.trim(),
+      jira_token: document.getElementById('jiraToken').value.trim(),
+      ticket_url: document.getElementById('jiraTicket').value.trim(),
+    });
+    const ctx = r.context;
+    const resultEl = document.getElementById('jiraContextResult');
+    const bodyEl   = document.getElementById('jiraContextBody');
+    resultEl.style.display = 'block';
+    bodyEl.innerHTML = `
+      <div style="margin-bottom:8px"><span style="color:var(--text-3)">Issue:</span> <span style="color:var(--cyan);font-family:var(--mono)">${ctx.issue_key}</span></div>
+      <div style="margin-bottom:8px"><span style="color:var(--text-3)">Summary:</span> ${escHtml(ctx.summary || '')}</div>
+      ${ctx.source_hint ? `<div style="margin-bottom:4px"><span class="badge badge-gray">Source:</span> ${escHtml(ctx.source_hint)}</div>` : ''}
+      ${ctx.target_hint ? `<div style="margin-bottom:4px"><span class="badge badge-cyan">Target:</span> ${escHtml(ctx.target_hint)}</div>` : ''}
+      ${ctx.business_rules && ctx.business_rules.length ? `<div style="margin-top:8px"><span style="color:var(--text-3)">Rules:</span><ul style="margin:4px 0 0 16px">${ctx.business_rules.map(r => `<li>${escHtml(r)}</li>`).join('')}</ul></div>` : ''}
+    `;
+    _updateJiraHeight();
+    statusEl.textContent = 'Context loaded!';
+    statusEl.style.color = 'var(--green)';
+    toast(`Jira context loaded for ${ctx.issue_key}`, 'success');
+  } catch(e) {
+    statusEl.textContent = 'Failed: ' + e;
+    statusEl.style.color = 'var(--red)';
+    toast('Jira fetch failed: ' + e, 'error');
+  }
+}
+
+async function saveSessionContext() {
+  const name = document.getElementById('sessionName').value.trim();
+  const instructions = document.getElementById('sessionInstructions').value.trim();
+  if (!currentSession) {
+    const r = await apiFetch('/api/sessions', 'POST', { name: name || null, instructions: instructions || null });
+    currentSession = r;
+    currentSession.id = r.session_id;
+    localStorage.setItem('dm_session_id', r.session_id);
+    updateSessionUI();
+    toast('Session created with context', 'success');
+  } else {
+    // Session already exists — we'll send as part of next createSession call
+    // For now, store locally on currentSession
+    currentSession._name = name;
+    currentSession._instructions = instructions;
+    toast('Context saved to session', 'success');
+  }
+}
+
+// ─── FEATURE 2: SOURCE DB TAB + DB CONNECTOR ─────────────
+
+const DB_EXAMPLES = {
+  postgres:   'postgresql+psycopg2://user:password@host:5432/dbname',
+  mysql:      'mysql+pymysql://user:password@host:3306/dbname',
+  mssql:      'mssql+pyodbc://user:password@host:1433/dbname?driver=ODBC+Driver+17+for+SQL+Server',
+  azuresql:   'mssql+pyodbc://user:password@server.database.windows.net:1433/dbname?driver=ODBC+Driver+17+for+SQL+Server',
+  snowflake:  'snowflake://user:password@account/dbname/schema',
+  databricks: 'databricks://token:dapi_token@host/default',
+  oracle:     'oracle+cx_oracle://user:password@host:1521/?service_name=ORCLCDB',
+  redshift:   'redshift+psycopg2://user:password@host:5439/dbname',
+  teradata:   'teradatasql://user:password@host/dbname',
+};
+
+function setSrcTab(tab) {
+  ['file','db'].forEach(t => {
+    document.getElementById(`srcTab-${t}`).classList.toggle('active', t === tab);
+    document.getElementById(`srcPanel-${t}`).style.display = t === tab ? 'block' : 'none';
+  });
+}
+
+function updateConnExample() {
+  const dbType = document.getElementById('dbType').value;
+  const hint   = DB_EXAMPLES[dbType] || '';
+  const connEl = document.getElementById('dbConnStr');
+  const hintEl = document.getElementById('dbConnHint');
+  connEl.placeholder = hint;
+  hintEl.textContent = 'Format: ' + hint;
+}
+
+async function connectSourceDB() {
+  if (!currentSession) await newSession();
+  const sid      = currentSession.id || currentSession.session_id;
+  const dbType   = document.getElementById('dbType').value;
+  const connStr  = document.getElementById('dbConnStr').value.trim();
+  const schema   = document.getElementById('dbSchemaFilter').value.trim();
+  const tblFilt  = document.getElementById('dbTableFilter').value.trim();
+  const statusEl = document.getElementById('dbConnStatus');
+
+  if (!connStr) { toast('Connection string is required', 'warn'); return; }
+
+  statusEl.textContent = 'Connecting…';
+  statusEl.style.color = 'var(--cyan)';
+
+  try {
+    const r = await apiFetch(`/api/sessions/${sid}/source-connect`, 'POST', {
+      db_type:           dbType,
+      connection_string: connStr,
+      schema_filter:     schema,
+      table_filter:      tblFilt,
+    });
+
+    // Render preview
+    document.getElementById('previewTitle').textContent = `${dbType}://${connStr.split('@')[1]?.split('/')[0] || 'host'}`;
+    document.getElementById('previewStats').textContent = `${r.tables} table(s) · ${r.columns} columns`;
+
+    const tbody = document.getElementById('previewBody');
+    tbody.innerHTML = (r.preview || []).map(c => `
+      <tr>
+        <td class="cell-mono">${escHtml(c.name)}</td>
+        <td><span class="badge badge-gray">${escHtml(c.type)}</span></td>
+        <td style="color:var(--text-3);font-family:var(--mono);font-size:11px">${c.sample || '—'}</td>
+        <td>${c.nullable !== false ? '<span class="badge badge-gray">Yes</span>' : '<span class="badge badge-red">No</span>'}</td>
+      </tr>`).join('');
+
+    const extra = r.columns - (r.preview || []).length;
+    document.getElementById('previewMore').textContent = extra > 0 ? `… and ${extra} more columns across ${r.tables} table(s)` : `Tables: ${(r.table_names || []).slice(0, 8).join(', ')}`;
+
+    document.getElementById('schemaPreview').style.display = 'block';
+    document.getElementById('nextToBQ').disabled = false;
+
+    currentSession.filename = r.table_names ? `${dbType} (${r.tables} tables)` : dbType;
+    currentSession.status   = 'schema_uploaded';
+    updateSessionUI();
+
+    statusEl.textContent = `Connected — ${r.tables} tables found`;
+    statusEl.style.color = 'var(--green)';
+    toast(`Discovered ${r.tables} tables · ${r.columns} columns`, 'success');
+  } catch(e) {
+    statusEl.textContent = 'Failed: ' + e;
+    statusEl.style.color = 'var(--red)';
+    toast('Connection failed: ' + e, 'error');
+  }
+}
+
+// ─── FEATURE 4: TARGET FILES UPLOAD ──────────────────────
+
+let _targetMode = 'bq';
+
+function setTargetMode(mode) {
+  _targetMode = mode;
+  ['bq','files'].forEach(m => {
+    document.getElementById(`tgtBtn-${m}`).classList.toggle('active', m === mode);
+    document.getElementById(`tgtPanel-${m}`).style.display = m === mode ? 'block' : 'none';
+  });
+}
+
+function tgtDz_dragover(e) { e.preventDefault(); document.getElementById('targetFilesDropzone').classList.add('drag-over'); }
+function tgtDz_dragleave()  { document.getElementById('targetFilesDropzone').classList.remove('drag-over'); }
+function tgtDz_drop(e)      { e.preventDefault(); tgtDz_dragleave(); uploadTargetFiles(e.dataTransfer.files); }
+
+async function uploadTargetFiles(files) {
+  if (!files || !files.length) return;
+  if (!currentSession) await newSession();
+  const sid = currentSession.id || currentSession.session_id;
+
+  // Show staged files list
+  const listEl  = document.getElementById('targetFilesList');
+  const itemsEl = document.getElementById('targetFilesItems');
+  listEl.style.display  = 'block';
+  itemsEl.innerHTML = Array.from(files).map(f =>
+    `<div style="display:flex;gap:8px;align-items:center;padding:4px 0;font-size:12px">
+      <span style="color:var(--cyan);font-family:var(--mono)">${escHtml(f.name.replace(/\.csv$/i,''))}</span>
+      <span class="badge badge-gray">${f.name}</span>
+    </div>`
+  ).join('');
+
+  const fd = new FormData();
+  Array.from(files).forEach(f => fd.append('files', f));
+
+  const resultEl = document.getElementById('tgtFilesResult');
+  const msgEl    = document.getElementById('tgtFilesMsg');
+  resultEl.style.display = 'block';
+  msgEl.innerHTML = '<span class="spin">⟳</span> Uploading…';
+
+  try {
+    const r = await fetch(`${API}/api/sessions/${sid}/target-files`, { method: 'POST', body: fd }).then(res => res.json());
+    if (r.detail) throw new Error(r.detail);
+
+    msgEl.innerHTML = `<span style="color:var(--green)">✓ ${r.tables} target table(s) loaded:</span> <span style="font-family:var(--mono);font-size:11px;color:var(--cyan)">${(r.table_names||[]).join(', ')}</span>`;
+    document.getElementById('tgtFilesStatusBadge').className   = 'badge badge-green';
+    document.getElementById('tgtFilesStatusBadge').textContent  = `✓ ${r.tables} tables`;
+    toast(`${r.tables} target tables uploaded · ${r.total_columns} columns`, 'success');
+  } catch(e) {
+    msgEl.innerHTML = `<span style="color:var(--red)">✕ Upload failed:</span> ${e}`;
+    toast('Target files upload failed: ' + e, 'error');
+  }
+}
+
+// ─── FEATURE 3: SESSION SUMMARY ──────────────────────────
+
+async function loadSummary() {
+  if (!currentSession) { toast('No active session', 'warn'); return; }
+  const sid  = currentSession.id || currentSession.session_id;
+  const disp = document.getElementById('summaryDisplay');
+  const phld = document.getElementById('summaryPlaceholder');
+  disp.style.display  = 'none';
+  phld.textContent    = '⟳ Generating summary…';
+  phld.style.display  = 'block';
+
+  // Show stats badges
+  const stats = currentSession.stats || {};
+  if (stats.total) {
+    document.getElementById('sumStat-total').textContent    = `${stats.total} total`;
+    document.getElementById('sumStat-mapped').textContent   = `${stats.mapped || 0} mapped`;
+    document.getElementById('sumStat-review').textContent   = `${stats.review || 0} review`;
+    document.getElementById('sumStat-unmapped').textContent = `${stats.unmapped || 0} unmapped`;
+    ['total','mapped','review','unmapped'].forEach(k => document.getElementById(`sumStat-${k}`).style.display = 'inline-flex');
+  }
+
+  try {
+    const r = await apiFetch(`/api/sessions/${sid}/summary`);
+    if (!r.ready) {
+      phld.textContent = 'No mappings available yet. Run the pipeline first.';
+      return;
+    }
+    phld.style.display = 'none';
+    disp.style.display = 'block';
+    disp.textContent   = r.summary;
+
+    // Update stats from response
+    if (r.stats && r.stats.total) {
+      updateKPIs(r.stats);
+      currentSession.stats = r.stats;
+    }
+  } catch(e) {
+    phld.textContent = 'Summary failed: ' + e;
+    toast('Summary generation failed: ' + e, 'error');
+  }
+}
+
+// ─── MODIFIED: goToBQ (saves context then navigates) ─────
+
+async function goToBQ() {
+  // Save session context before proceeding
+  const name         = document.getElementById('sessionName').value.trim();
+  const instructions = document.getElementById('sessionInstructions').value.trim();
+  if (!currentSession && (name || instructions)) {
+    const r = await apiFetch('/api/sessions', 'POST', { name: name || null, instructions: instructions || null });
+    currentSession = r;
+    currentSession.id = r.session_id;
+    localStorage.setItem('dm_session_id', r.session_id);
+    updateSessionUI();
+  }
+  switchView('bq', document.querySelector('[data-view=bq]'));
+}
+
+// ─── AUDIT TRAIL ─────────────────────────────────────────
+
+async function loadAuditTrail() {
+  const list = document.getElementById('auditList');
+  list.innerHTML = '<div style="color:var(--text-3);text-align:center;padding:24px"><span class="spin">⟳</span> Loading…</div>';
+  try {
+    const data = await apiFetch('/api/audit');
+    if (!data.audits || !data.audits.length) {
+      list.innerHTML = '<div style="color:var(--text-3);text-align:center;padding:48px">No audit records yet. Approve a mapping session to create the first entry.</div>';
+      return;
+    }
+    list.innerHTML = data.audits.map(a => `
+      <div class="card" style="margin-bottom:12px">
+        <div class="card-body" style="display:flex;align-items:center;gap:16px;padding:16px">
+          <div style="flex:1">
+            <div style="font-weight:700;font-size:14px;margin-bottom:4px">${escHtml(a.session_name || a.audit_id)}</div>
+            <div style="font-size:12px;color:var(--text-3)">${new Date(a.timestamp).toLocaleString()} · ${escHtml(a.source || 'unknown source')}</div>
+            <div style="margin-top:6px;display:flex;gap:8px;flex-wrap:wrap">
+              <span class="badge badge-green">✓ ${a.stats?.mapped||0} mapped</span>
+              <span class="badge badge-gray">${a.stats?.unmapped||0} unmapped</span>
+              <span class="badge badge-gray">${Math.round((a.stats?.avg_confidence||0)*100)}% avg conf</span>
+            </div>
+          </div>
+          <a href="${API}/api/audit/${encodeURIComponent(a.audit_id)}/csv" target="_blank" class="btn btn-ghost btn-sm">&#8595; CSV</a>
+        </div>
+      </div>
+    `).join('');
+  } catch(e) {
+    list.innerHTML = `<div style="color:var(--red);text-align:center;padding:24px">Failed to load audit records: ${e}</div>`;
+  }
+}
+
+// ─── SLACK CONFIG ─────────────────────────────────────────
+
+async function saveSlackConfig() {
+  const webhook = document.getElementById('slackWebhook').value.trim();
+  if (!webhook) { toast('Enter a Slack webhook URL first', 'warn'); return; }
+  const statusEl = document.getElementById('slackStatus');
+  statusEl.className = 'badge badge-orange';
+  statusEl.textContent = 'Saving…';
+  try {
+    localStorage.setItem('dm_slack_webhook', webhook);
+    await apiFetch('/api/settings/slack', 'POST', { webhook_url: webhook });
+    statusEl.className = 'badge badge-green';
+    statusEl.textContent = '✓ Connected';
+    toast('Slack integration connected! Test message sent.', 'success');
+  } catch(e) {
+    statusEl.className = 'badge badge-red';
+    statusEl.textContent = 'Failed';
+    toast('Slack config failed: ' + e, 'error');
+  }
 }
 
 // ─── THEME SWITCHER ──────────────────────────────────────

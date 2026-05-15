@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: datamapper-ai-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: singapore
+    branch: dev
+
+    envVars:
+      - key: DM_PROVIDER
+        value: deepseek
+      - key: LLM_MODEL
+        value: deepseek-chat
+      - key: LLM_BASE_URL
+        value: https://api.deepseek.com/v1
+      - key: LLM_API_KEY
+        sync: false          # set manually in Render dashboard
+      - key: SLACK_WEBHOOK_URL
+        sync: false          # optional — set in Render dashboard
+      - key: BQ_PROJECT_ID
+        sync: false          # optional
+      - key: BQ_DATASET
+        sync: false          # optional
+      - key: PORT
+        value: "7788"
+
+    healthCheckPath: /api/health

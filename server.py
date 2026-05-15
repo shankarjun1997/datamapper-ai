@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Any, AsyncIterator, Dict, List, Optional
 
 import anthropic
+import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -42,15 +43,24 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 logger = logging.getLogger("datamapper")
 
 # ── Global config (overridable per-session via user API keys) ──────────────
-_DEFAULT_PROVIDER   = os.getenv("DM_PROVIDER", "claude")        # claude | deepseek | custom
+_DEFAULT_PROVIDER   = os.getenv("DM_PROVIDER", "deepseek")      # deepseek | claude | custom
 _ANTHROPIC_API_KEY  = os.getenv("ANTHROPIC_API_KEY", "")
 _DEEPSEEK_API_KEY   = os.getenv("LLM_API_KEY", "")
 _DEEPSEEK_BASE_URL  = os.getenv("LLM_BASE_URL", "https://api.deepseek.com/v1")
-_DEEPSEEK_MODEL     = os.getenv("LLM_MODEL", "deepseek-chat")
+_DEEPSEEK_MODEL     = os.getenv("LLM_MODEL", "deepseek-chat")   # deepseek-chat = V3 (fast + cheap)
 _CLAUDE_MODEL       = os.getenv("DM_CLAUDE_MODEL", "claude-sonnet-4-6")
 _BQ_PROJECT         = os.getenv("BQ_PROJECT_ID", "")
 _BQ_DATASET         = os.getenv("BQ_DATASET", "")
 _GCP_CREDS          = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
+_JIRA_URL           = os.getenv("JIRA_URL", "")
+_JIRA_EMAIL         = os.getenv("JIRA_EMAIL", "")
+_JIRA_TOKEN         = os.getenv("JIRA_TOKEN", "")
+_SLACK_WEBHOOK_URL  = os.getenv("SLACK_WEBHOOK_URL", "")
+_SLACK_CHANNEL      = os.getenv("SLACK_CHANNEL", "#datamapper-ai-alerts")
+
+# ── Audit directory ────────────────────────────────────────────────────────
+_AUDIT_DIR = Path(__file__).parent / "audits"
+_AUDIT_DIR.mkdir(exist_ok=True)
 
 # ── In-memory session store ────────────────────────────────────────────────
 _sessions: Dict[str, Dict[str, Any]] = {}
@@ -123,6 +133,66 @@ class MultiLLMClient:
             if m2:
                 return json.loads(m2.group(1))
             raise ValueError(f"LLM did not return valid JSON:\n{raw[:400]}")
+
+
+async def _notify_slack(text: str, session: Dict = None):
+    """Post a notification to Slack via Incoming Webhook."""
+    if not _SLACK_WEBHOOK_URL:
+        return
+    try:
+        blocks = [{"type": "section", "text": {"type": "mrkdwn", "text": text}}]
+        if session:
+            stats = session.get("stats", {})
+            name = session.get("name", session.get("id", "")[:8])
+            blocks.append({"type": "context", "elements": [
+                {"type": "mrkdwn", "text": f"Session: *{name}* | Mapped: {stats.get('mapped',0)} | Review: {stats.get('review',0)} | Unmapped: {stats.get('unmapped',0)} | Avg confidence: {round((stats.get('avg_confidence') or 0)*100)}%"}
+            ]})
+        payload = {"text": text, "blocks": blocks}
+        async with httpx.AsyncClient(timeout=5) as client:
+            await client.post(_SLACK_WEBHOOK_URL, json=payload)
+    except Exception as e:
+        logger.warning("Slack notify failed: %s", e)
+
+
+def _write_audit(session: Dict) -> str:
+    """Write a timestamped audit JSON record when Gate 2 is approved."""
+    sid = session["id"]
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    audit = {
+        "audit_id":    f"{sid[:8]}_{ts}",
+        "session_id":  sid,
+        "session_name": session.get("name", sid[:8]),
+        "timestamp":   _now(),
+        "source":      session.get("filename") or session.get("source_type", "unknown"),
+        "target_mode": session.get("target_mode", "bq"),
+        "bq_project":  session.get("bq_config", {}).get("project", ""),
+        "bq_dataset":  session.get("bq_config", {}).get("dataset", ""),
+        "stats":       session.get("stats", {}),
+        "instructions": session.get("instructions", ""),
+        "jira_context": session.get("jira_context", {}),
+        "mappings":    session.get("mappings", []),
+        "approved_by": "user",
+        "event":       "gate2_approved",
+    }
+    path = _AUDIT_DIR / f"{audit['audit_id']}.json"
+    with open(path, "w") as f:
+        json.dump(audit, f, indent=2, default=str)
+    return audit["audit_id"]
+
+
+def _write_audit_csv(session: Dict, audit_id: str):
+    """Write a CSV snapshot alongside the audit JSON."""
+    mappings = session.get("mappings", [])
+    path = _AUDIT_DIR / f"{audit_id}.csv"
+    fieldnames = [
+        "src_table","src_field","src_type","tgt_table","tgt_column","tgt_type",
+        "mapping_type","business_logic","confidence","tier","status","rationale"
+    ]
+    with open(path, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames)
+        w.writeheader()
+        for m in mappings:
+            w.writerow({k: m.get(k, "") for k in fieldnames})
 
 
 def _make_llm(session: Dict) -> MultiLLMClient:
@@ -278,6 +348,183 @@ def crawl_bq(project: str, dataset: str, gcp_creds: str = "", target_tables: Lis
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# SOURCE DB CRAWLER — multi-dialect
+# ─────────────────────────────────────────────────────────────────────────────
+
+_DB_CONN_EXAMPLES = {
+    "postgres":   "postgresql+psycopg2://user:password@host:5432/dbname",
+    "mysql":      "mysql+pymysql://user:password@host:3306/dbname",
+    "mssql":      "mssql+pyodbc://user:password@host:1433/dbname?driver=ODBC+Driver+17+for+SQL+Server",
+    "azuresql":   "mssql+pyodbc://user:password@server.database.windows.net:1433/dbname?driver=ODBC+Driver+17+for+SQL+Server",
+    "snowflake":  "snowflake://user:password@account/dbname/schema",
+    "databricks": "databricks://token:dapi_token@host/dbname",
+    "oracle":     "oracle+cx_oracle://user:password@host:1521/?service_name=ORCLCDB",
+    "redshift":   "redshift+psycopg2://user:password@host:5439/dbname",
+    "teradata":   "teradatasql://user:password@host/dbname",
+}
+
+_DB_INSTALL_HINTS = {
+    "postgres":   "pip install psycopg2-binary",
+    "mysql":      "pip install pymysql",
+    "mssql":      "pip install pyodbc",
+    "azuresql":   "pip install pyodbc",
+    "snowflake":  "pip install snowflake-connector-python",
+    "databricks": "pip install databricks-sql-connector",
+    "oracle":     "pip install cx_Oracle  # or oracledb",
+    "redshift":   "pip install psycopg2-binary",
+    "teradata":   "pip install teradatasql",
+}
+
+_INFOSYS_QUERY = """
+    SELECT table_name, column_name, data_type, is_nullable
+    FROM information_schema.columns
+    WHERE table_schema NOT IN ('information_schema','pg_catalog','sys','INFORMATION_SCHEMA','performance_schema')
+    ORDER BY table_name, ordinal_position
+"""
+
+
+def crawl_source_db(db_type: str, conn_str: str, schema_filter: str = "", table_filter: str = "") -> Dict:
+    """Crawl a source database and return schema in parse_schema_file format."""
+    db_type = db_type.lower()
+
+    if db_type == "oracle":
+        try:
+            import cx_Oracle  # type: ignore
+        except ImportError:
+            try:
+                import oracledb as cx_Oracle  # type: ignore
+            except ImportError:
+                raise RuntimeError(f"Driver for oracle not installed. Run: {_DB_INSTALL_HINTS['oracle']}")
+        import sqlalchemy
+        try:
+            engine = sqlalchemy.create_engine(conn_str)
+        except Exception as e:
+            raise RuntimeError(f"Oracle connection failed: {e}")
+        query = "SELECT table_name, column_name, data_type, nullable FROM all_tab_columns ORDER BY table_name, column_id"
+        with engine.connect() as conn:
+            rows = conn.execute(sqlalchemy.text(query)).fetchall()
+        tables: Dict[str, List] = {}
+        for r in rows:
+            tbl = str(r[0])
+            if tbl not in tables:
+                tables[tbl] = []
+            tables[tbl].append({
+                "name": str(r[1]),
+                "type": _normalize_type(str(r[2])),
+                "sample": "",
+                "nullable": str(r[3]).upper() == "Y",
+            })
+
+    elif db_type == "snowflake":
+        try:
+            import snowflake.connector  # type: ignore
+            # Parse conn_str manually for snowflake connector
+            import sqlalchemy
+            engine = sqlalchemy.create_engine(conn_str)
+            with engine.connect() as conn:
+                rows = conn.execute(sqlalchemy.text(_INFOSYS_QUERY)).fetchall()
+        except ImportError:
+            raise RuntimeError(f"Driver for snowflake not installed. Run: {_DB_INSTALL_HINTS['snowflake']}")
+        except Exception as e:
+            raise RuntimeError(f"Snowflake connection failed: {e}")
+        tables = {}
+        for r in rows:
+            tbl = str(r[0])
+            if tbl not in tables:
+                tables[tbl] = []
+            tables[tbl].append({
+                "name": str(r[1]),
+                "type": _normalize_type(str(r[2])),
+                "sample": "",
+                "nullable": str(r[3]).upper() == "YES",
+            })
+
+    elif db_type == "databricks":
+        try:
+            from databricks import sql as dbsql  # type: ignore
+        except ImportError:
+            raise RuntimeError(f"Driver for databricks not installed. Run: {_DB_INSTALL_HINTS['databricks']}")
+        # For databricks we expect conn_str as: token@host/http_path
+        # Use sqlalchemy fallback
+        try:
+            import sqlalchemy
+            engine = sqlalchemy.create_engine(conn_str)
+            with engine.connect() as conn:
+                rows = conn.execute(sqlalchemy.text("SHOW TABLES")).fetchall()
+            tables = {}
+            with engine.connect() as conn:
+                for row in rows:
+                    tbl = str(row[1]) if len(row) > 1 else str(row[0])
+                    try:
+                        cols = conn.execute(sqlalchemy.text(f"DESCRIBE TABLE {tbl}")).fetchall()
+                        tables[tbl] = [{"name": str(c[0]), "type": _normalize_type(str(c[1])), "sample": "", "nullable": True} for c in cols if c[0] and not str(c[0]).startswith("#")]
+                    except Exception:
+                        pass
+        except Exception as e:
+            raise RuntimeError(f"Databricks connection failed: {e}")
+
+    else:
+        # Postgres, MySQL, MSSQL, Azure SQL, Redshift — use SQLAlchemy + INFORMATION_SCHEMA
+        try:
+            import sqlalchemy
+        except ImportError:
+            raise RuntimeError("sqlalchemy not installed. Run: pip install sqlalchemy")
+
+        driver_map = {
+            "postgres": "psycopg2",
+            "mysql":    "pymysql",
+            "mssql":    "pyodbc",
+            "azuresql": "pyodbc",
+            "redshift": "psycopg2",
+        }
+        driver = driver_map.get(db_type, "")
+        try:
+            engine = sqlalchemy.create_engine(conn_str)
+        except Exception as e:
+            raise RuntimeError(f"Could not create engine for {db_type}: {e}")
+
+        try:
+            with engine.connect() as conn:
+                rows = conn.execute(sqlalchemy.text(_INFOSYS_QUERY)).fetchall()
+        except Exception as e:
+            install = _DB_INSTALL_HINTS.get(db_type, "")
+            raise RuntimeError(f"Database query failed for {db_type}: {e}. Hint: {install}")
+
+        tables = {}
+        for r in rows:
+            tbl = str(r[0])
+            if tbl not in tables:
+                tables[tbl] = []
+            tables[tbl].append({
+                "name": str(r[1]),
+                "type": _normalize_type(str(r[2])),
+                "sample": "",
+                "nullable": str(r[3]).upper() == "YES",
+            })
+
+    # Apply table filter
+    if table_filter:
+        allowed = {t.strip().lower() for t in table_filter.split(",") if t.strip()}
+        tables = {k: v for k, v in tables.items() if k.lower() in allowed}
+
+    # Apply schema filter (for drivers that don't support it natively in INFORMATION_SCHEMA)
+    if schema_filter:
+        schemas = {s.strip().lower() for s in schema_filter.split(",") if s.strip()}
+        # If the table names are schema-qualified, filter; otherwise skip
+        filtered = {}
+        for tbl, cols in tables.items():
+            parts = tbl.split(".")
+            if len(parts) == 2 and parts[0].lower() not in schemas:
+                continue
+            filtered[tbl] = cols
+        if filtered:
+            tables = filtered
+
+    result_tables = [{"name": tbl, "columns": cols} for tbl, cols in tables.items()]
+    return {"tables": result_tables}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # CONFIDENCE SCORING — deterministic floor before LLM
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -367,6 +614,30 @@ Rules:
 """
 
 
+def _build_mapping_system(session: Dict) -> str:
+    """Build context-aware system prompt for L3 mapping stage."""
+    base = MAPPING_SYSTEM
+    instructions = session.get("instructions", "")
+    jira_ctx = session.get("jira_context", {})
+    memory = session.get("mapping_memory", [])
+
+    extras = []
+    if instructions:
+        extras.append(f"USER INSTRUCTIONS (follow strictly):\n{instructions}")
+    if jira_ctx.get("summary"):
+        extras.append(f"BUSINESS CONTEXT (from Jira):\n{jira_ctx['summary']}")
+    if memory:
+        mem_text = "\n".join(
+            f"  {m['src']} -> {m['tgt']} [{m['type']}]: {m['logic']}"
+            for m in memory[-20:]
+        )
+        extras.append(f"APPROVED MAPPING PATTERNS (learn from these):\n{mem_text}")
+
+    if extras:
+        return base + "\n\n" + "\n\n".join(extras)
+    return base
+
+
 async def _emit(session_id: str, event: str, data: Any):
     q = _sse_queues.get(session_id)
     if q:
@@ -400,30 +671,40 @@ async def _run_pipeline(session_id: str):
                               "msg": f"Parsed {len(src_tables)} table(s) · {total_cols} source columns"})
         session["l1_done"] = True
 
-        # ── L2: Crawl BigQuery INFORMATION_SCHEMA ─────────────────────────────
+        # ── L2: Crawl target schema (BQ or custom files) ──────────────────────
         session["stage"] = "L2"
-        await emit("stage", {"stage": "L2", "status": "running", "msg": "Crawling BigQuery INFORMATION_SCHEMA…"})
 
-        cfg = session.get("bq_config", {})
-        project   = cfg.get("project") or _BQ_PROJECT
-        dataset   = cfg.get("dataset") or _BQ_DATASET
-        gcp_creds = cfg.get("gcp_creds") or _GCP_CREDS
-        tgt_filter = [t.strip() for t in cfg.get("target_tables", "").split(",") if t.strip()]
+        if session.get("target_mode") == "files" and session.get("target_files_data"):
+            # Use custom uploaded target files
+            await emit("stage", {"stage": "L2", "status": "running", "msg": "Loading custom target files…"})
+            bq_tables = session["target_files_data"]
+            total_tgt_cols = sum(len(t["columns"]) for t in bq_tables)
+            await emit("stage", {"stage": "L2", "status": "done",
+                                  "msg": f"Using custom target files — {len(bq_tables)} table(s) · {total_tgt_cols} columns"})
+        else:
+            await emit("stage", {"stage": "L2", "status": "running", "msg": "Crawling BigQuery INFORMATION_SCHEMA…"})
 
-        if not project or not dataset:
-            raise RuntimeError("BQ Project ID and Dataset are required. Configure them in the BQ panel.")
+            cfg = session.get("bq_config", {})
+            project   = cfg.get("project") or _BQ_PROJECT
+            dataset   = cfg.get("dataset") or _BQ_DATASET
+            gcp_creds = cfg.get("gcp_creds") or _GCP_CREDS
+            tgt_filter = [t.strip() for t in cfg.get("target_tables", "").split(",") if t.strip()]
 
-        try:
-            bq_tables = await asyncio.to_thread(crawl_bq, project, dataset, gcp_creds, tgt_filter or None)
-        except Exception as e:
-            raise RuntimeError(f"BigQuery crawl failed: {e}")
+            if not project or not dataset:
+                raise RuntimeError("BQ Project ID and Dataset are required. Configure them in the BQ panel.")
 
-        if not bq_tables:
-            raise RuntimeError(f"No tables found in {project}.{dataset}. Check project/dataset and permissions.")
+            try:
+                bq_tables = await asyncio.to_thread(crawl_bq, project, dataset, gcp_creds, tgt_filter or None)
+            except Exception as e:
+                raise RuntimeError(f"BigQuery crawl failed: {e}")
 
-        total_tgt_cols = sum(len(t["columns"]) for t in bq_tables)
-        await emit("stage", {"stage": "L2", "status": "done",
-                              "msg": f"Crawled {len(bq_tables)} BQ tables · {total_tgt_cols} target columns"})
+            if not bq_tables:
+                raise RuntimeError(f"No tables found in {project}.{dataset}. Check project/dataset and permissions.")
+
+            total_tgt_cols = sum(len(t["columns"]) for t in bq_tables)
+            await emit("stage", {"stage": "L2", "status": "done",
+                                  "msg": f"Crawled {len(bq_tables)} BQ tables · {total_tgt_cols} target columns"})
+
         session["bq_tables"] = bq_tables
         session["l2_done"] = True
 
@@ -441,6 +722,9 @@ async def _run_pipeline(session_id: str):
             ", ".join(f"{c['name']}({c['type']})" for c in t["columns"])
             for t in bq_tables
         )
+
+        # Build context-aware system prompt
+        mapping_system = _build_mapping_system(session)
 
         all_mappings: List[Dict] = []
         processed = 0
@@ -465,7 +749,7 @@ async def _run_pipeline(session_id: str):
                 )
 
                 try:
-                    raw_result = await asyncio.to_thread(llm.complete_json, MAPPING_SYSTEM, prompt)
+                    raw_result = await asyncio.to_thread(llm.complete_json, mapping_system, prompt)
                     if isinstance(raw_result, dict):
                         raw_result = raw_result.get("mappings", [raw_result])
                 except Exception as e:
@@ -540,6 +824,8 @@ async def _run_pipeline(session_id: str):
             "stats": session["stats"],
         })
         session["l3_done"] = True
+
+        await _notify_slack(f"\U0001f5c2️ *Mapping complete — Gate 2 ready for review*\nSession `{session_id[:8]}` finished semantic mapping.", session)
 
         # Gate 2: requires human review — pause here
         session["stage"] = "gate2"
@@ -623,6 +909,7 @@ async def _run_sql_generation(session_id: str):
 
         await emit("stage", {"stage": "L4", "status": "done", "msg": "SQL generated successfully"})
         await emit("status", {"status": "done", "msg": "Pipeline complete"})
+        await _notify_slack(f"✅ *Pipeline complete — SQL ready*\nSession `{session_id[:8]}` · {len(mapped_rows)} mapped columns", session)
 
     except Exception as e:
         logger.exception("SQL gen error: %s", e)
@@ -666,20 +953,31 @@ if (_STATIC / "index.html").exists():
 
 # ── Session lifecycle ─────────────────────────────────────────────────────────
 
+class SessionCreate(BaseModel):
+    name: Optional[str] = None
+    instructions: Optional[str] = None
+
+
 @app.post("/api/sessions")
-async def create_session():
+async def create_session(body: Optional[SessionCreate] = None):
     sid = str(uuid.uuid4())
     _sessions[sid] = {
-        "id":         sid,
-        "created_at": _now(),
-        "status":     "new",
-        "stage":      "idle",
-        "running":    False,
-        "log":        [],
-        "mappings":   [],
-        "stats":      {},
-        "bq_config":  {},
-        "api_config": {},
+        "id":                sid,
+        "created_at":        _now(),
+        "status":            "new",
+        "stage":             "idle",
+        "running":           False,
+        "log":               [],
+        "mappings":          [],
+        "stats":             {},
+        "bq_config":         {},
+        "api_config":        {},
+        "name":              (body.name if body else None) or f"Session {sid[:6]}",
+        "instructions":      (body.instructions if body else None) or "",
+        "mapping_memory":    [],
+        "jira_context":      {},
+        "target_mode":       "bq",
+        "target_files_data": None,
     }
     return {"session_id": sid}
 
@@ -738,6 +1036,214 @@ async def upload_schema(sid: str, file: UploadFile = File(...)):
         "preview": schema_data["tables"][0]["columns"][:8] if schema_data["tables"] else [],
         "table_names": [t["name"] for t in schema_data["tables"]],
     }
+
+
+# ── Jira context ──────────────────────────────────────────────────────────────
+
+class JiraContextRequest(BaseModel):
+    jira_url:   Optional[str] = ""
+    jira_email: Optional[str] = ""
+    jira_token: Optional[str] = ""
+    ticket_url: Optional[str] = ""
+
+
+@app.post("/api/sessions/{sid}/jira-context")
+async def fetch_jira_context(sid: str, req: JiraContextRequest):
+    s = _session_or_404(sid)
+
+    base_url  = req.jira_url  or _JIRA_URL
+    email     = req.jira_email or _JIRA_EMAIL
+    token     = req.jira_token or _JIRA_TOKEN
+    ticket    = req.ticket_url or ""
+
+    if not base_url or not token:
+        raise HTTPException(422, "Jira base URL and API token are required (or set JIRA_URL/JIRA_TOKEN in .env)")
+
+    # Extract issue key from ticket URL or treat as key directly
+    issue_key = ticket
+    if "/" in ticket:
+        issue_key = ticket.rstrip("/").split("/")[-1]
+
+    if not issue_key:
+        raise HTTPException(422, "Jira ticket URL or issue key is required")
+
+    api_url = f"{base_url.rstrip('/')}/rest/api/3/issue/{issue_key}"
+    import base64
+    creds = base64.b64encode(f"{email}:{token}".encode()).decode()
+
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.get(api_url, headers={
+                "Authorization": f"Basic {creds}",
+                "Accept": "application/json",
+            })
+        if resp.status_code == 401:
+            raise HTTPException(401, "Jira authentication failed. Check email and API token.")
+        if resp.status_code == 404:
+            raise HTTPException(404, f"Jira issue {issue_key!r} not found.")
+        resp.raise_for_status()
+        issue_data = resp.json()
+    except httpx.RequestError as e:
+        raise HTTPException(502, f"Could not reach Jira: {e}")
+
+    fields = issue_data.get("fields", {})
+    summary_text = fields.get("summary", "")
+    desc = fields.get("description", {})
+    desc_text = ""
+    if isinstance(desc, dict):
+        for block in desc.get("content", []):
+            for item in block.get("content", []):
+                if item.get("type") == "text":
+                    desc_text += item.get("text", "") + " "
+    elif isinstance(desc, str):
+        desc_text = desc
+
+    llm = _make_llm(s)
+    prompt = f"""Jira Issue: {issue_key}
+Summary: {summary_text}
+Description: {desc_text[:2000]}
+
+Extract from this Jira story:
+1. Intent summary (1-2 sentences, what data engineering work is needed)
+2. Source system hint (what source system/database is mentioned)
+3. Target system hint (what target/destination is mentioned)
+4. Key business rules (bullet list, max 5)
+
+Return JSON: {{"summary": "...", "source_hint": "...", "target_hint": "...", "business_rules": ["..."]}}"""
+
+    system = "You are a data engineering analyst. Extract key mapping context from a Jira story. Return only valid JSON."
+    try:
+        ctx = await asyncio.to_thread(llm.complete_json, system, prompt)
+    except Exception as e:
+        ctx = {"summary": summary_text, "source_hint": "", "target_hint": "", "business_rules": []}
+
+    ctx["issue_key"] = issue_key
+    ctx["jira_url"] = f"{base_url.rstrip('/')}/browse/{issue_key}"
+    s["jira_context"] = ctx
+    return {"ok": True, "context": ctx}
+
+
+# ── Source DB connector ────────────────────────────────────────────────────────
+
+class SourceConnectRequest(BaseModel):
+    db_type:           str
+    connection_string: str
+    schema_filter:     Optional[str] = ""
+    table_filter:      Optional[str] = ""
+
+
+@app.post("/api/sessions/{sid}/source-connect")
+async def source_connect(sid: str, req: SourceConnectRequest):
+    s = _session_or_404(sid)
+    try:
+        schema_data = await asyncio.to_thread(
+            crawl_source_db,
+            req.db_type,
+            req.connection_string,
+            req.schema_filter or "",
+            req.table_filter or "",
+        )
+    except RuntimeError as e:
+        raise HTTPException(422, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"Connection failed: {e}")
+
+    s["schema_data"]  = schema_data
+    s["source_type"]  = req.db_type
+    # Extract host from connection string for display
+    import re as _re
+    host_match = _re.search(r"@([^/:]+)", req.connection_string)
+    host = host_match.group(1) if host_match else "unknown"
+    s["source_conn_display"] = f"{req.db_type}://{host}"
+    s["filename"]    = s["source_conn_display"]
+    s["status"]      = "schema_uploaded"
+
+    total = sum(len(t["columns"]) for t in schema_data["tables"])
+    return {
+        "ok":          True,
+        "tables":      len(schema_data["tables"]),
+        "columns":     total,
+        "table_names": [t["name"] for t in schema_data["tables"]],
+        "preview":     schema_data["tables"][0]["columns"][:8] if schema_data["tables"] else [],
+    }
+
+
+# ── Target files upload ────────────────────────────────────────────────────────
+
+@app.post("/api/sessions/{sid}/target-files")
+async def upload_target_files(sid: str, files: List[UploadFile] = File(...)):
+    s = _session_or_404(sid)
+    target_tables = []
+
+    for f in files:
+        content = await f.read()
+        table_name = f.filename.rsplit(".", 1)[0] if "." in f.filename else f.filename
+
+        text = content.decode("utf-8-sig", errors="replace")
+        reader = csv.DictReader(io.StringIO(text))
+        fieldnames = [h.lower().strip() for h in (reader.fieldnames or [])]
+
+        name_col     = next((h for h in fieldnames if h in ("column_name", "column", "field", "name")), fieldnames[0] if fieldnames else "column_name")
+        type_col     = next((h for h in fieldnames if h in ("data_type", "type", "datatype")), None)
+        nullable_col = next((h for h in fieldnames if h in ("is_nullable", "nullable", "null")), None)
+
+        columns = []
+        for row in reader:
+            col_name = (row.get(name_col) or "").strip()
+            if not col_name:
+                continue
+            columns.append({
+                "name":     col_name,
+                "type":     _normalize_type(row.get(type_col or "", "") or "STRING") if type_col else "STRING",
+                "nullable": str(row.get(nullable_col or "", "YES")).upper() not in ("NO", "NOT NULL", "FALSE", "0") if nullable_col else True,
+            })
+
+        if columns:
+            target_tables.append({"table": table_name, "columns": columns})
+
+    s["target_mode"]       = "files"
+    s["target_files_data"] = target_tables
+
+    total_cols = sum(len(t["columns"]) for t in target_tables)
+    return {
+        "ok":           True,
+        "tables":       len(target_tables),
+        "table_names":  [t["table"] for t in target_tables],
+        "total_columns": total_cols,
+    }
+
+
+# ── Session summary ────────────────────────────────────────────────────────────
+
+@app.get("/api/sessions/{sid}/summary")
+async def get_session_summary(sid: str):
+    s = _session_or_404(sid)
+    mappings = s.get("mappings", [])
+    if not mappings:
+        return {"ready": False}
+
+    llm = _make_llm(s)
+    stats = s.get("stats", {})
+    prompt = f"""Session: {sid[:8]}
+Source: {s.get('filename') or s.get('source_type', 'unknown')}
+Instructions given: {s.get('instructions', 'None')}
+Stats: {json.dumps(stats)}
+Top mappings (first 30): {json.dumps(mappings[:30], indent=2)}
+
+Write a structured summary with:
+1. Overview (2 sentences)
+2. Key mapping decisions made (bullet points, max 8)
+3. Fields needing attention (unmapped or low confidence, max 5)
+4. Recommended next steps (max 3)
+Keep total under 400 words."""
+
+    system = "You are a data engineering expert. Summarize a mapping session concisely."
+    try:
+        summary_text = await asyncio.to_thread(llm.complete, system, prompt, 0.1, 1024)
+    except Exception as e:
+        summary_text = f"Summary unavailable: {e}"
+
+    return {"ready": True, "summary": summary_text, "stats": stats}
 
 
 # ── BQ config ─────────────────────────────────────────────────────────────────
@@ -828,11 +1334,16 @@ async def approve_gate2(sid: str):
     s = _session_or_404(sid)
     if s.get("status") != "review":
         raise HTTPException(409, "Session is not at Gate 2 review stage")
+    # Write audit trail before SQL generation
+    audit_id = _write_audit(s)
+    _write_audit_csv(s, audit_id)
+    s["audit_id"] = audit_id
     s["status"]  = "running"
     s["running"] = True
     _sse_queues[sid] = asyncio.Queue()
     asyncio.create_task(_run_sql_generation(sid))
-    return {"ok": True, "msg": "SQL generation started"}
+    asyncio.create_task(_notify_slack(f"\U0001f680 *Gate 2 approved — SQL generation started*\nSession `{sid[:8]}`", s))
+    return {"ok": True, "msg": "SQL generation started", "audit_id": audit_id}
 
 
 # ── SSE event stream ──────────────────────────────────────────────────────────
@@ -931,6 +1442,13 @@ async def approve_mapping(sid: str, row_id: str):
         raise HTTPException(404, "Row not found")
     row["status"] = "mapped"
     row["modified"] = True
+    # Record to session memory for future runs
+    s.setdefault("mapping_memory", []).append({
+        "src": row.get("src_field", ""),
+        "tgt": row.get("tgt_column", ""),
+        "type": row.get("mapping_type", ""),
+        "logic": row.get("business_logic", ""),
+    })
     return {"ok": True}
 
 
@@ -950,6 +1468,7 @@ async def export_csv(sid: str):
     w.writeheader()
     for m in mappings:
         w.writerow({k: m.get(k, "") for k in w.fieldnames})
+    asyncio.create_task(_notify_slack(f"\U0001f4e4 *Export triggered* — CSV\nSession `{sid[:8]}`", s))
     return StreamingResponse(
         io.BytesIO(buf.getvalue().encode()),
         media_type="text/csv",
@@ -1035,6 +1554,7 @@ async def export_xlsx(sid: str):
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
+    asyncio.create_task(_notify_slack(f"\U0001f4e4 *Export triggered* — XLSX\nSession `{sid[:8]}`", s))
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1048,6 +1568,7 @@ async def export_sql(sid: str):
     sql = s.get("generated_sql")
     if not sql:
         raise HTTPException(422, "SQL not yet generated. Complete the pipeline first.")
+    asyncio.create_task(_notify_slack(f"\U0001f4e4 *Export triggered* — SQL\nSession `{sid[:8]}`", s))
     return StreamingResponse(
         io.BytesIO(sql.encode()),
         media_type="text/plain",
@@ -1059,6 +1580,70 @@ async def export_sql(sid: str):
 async def get_sql(sid: str):
     s = _session_or_404(sid)
     return {"sql": s.get("generated_sql", ""), "ready": bool(s.get("generated_sql"))}
+
+
+# ── Slack settings ────────────────────────────────────────────────────────────
+
+class SlackConfig(BaseModel):
+    webhook_url: str
+
+
+@app.post("/api/settings/slack")
+async def set_slack_config(cfg: SlackConfig):
+    global _SLACK_WEBHOOK_URL
+    _SLACK_WEBHOOK_URL = cfg.webhook_url
+    await _notify_slack("✅ *DataMapper AI Slack integration connected!*\nNotifications are now active for this workspace.")
+    return {"ok": True}
+
+
+@app.get("/api/sessions/{sid}/slack-test")
+async def slack_test(sid: str):
+    s = _session_or_404(sid)
+    if not _SLACK_WEBHOOK_URL:
+        raise HTTPException(422, "No Slack webhook configured. POST /api/settings/slack first.")
+    await _notify_slack(f"🔔 *DataMapper AI — Slack test*\nWebhook is working correctly for session `{sid[:8]}`.", s)
+    return {"ok": True, "msg": "Test notification sent"}
+
+
+# ── Audit trail ───────────────────────────────────────────────────────────────
+
+@app.get("/api/audit")
+async def list_audit():
+    """List all audit records."""
+    records = []
+    for p in sorted(_AUDIT_DIR.glob("*.json"), reverse=True):
+        try:
+            with open(p) as f:
+                a = json.load(f)
+            records.append({
+                "audit_id":     a.get("audit_id"),
+                "session_name": a.get("session_name"),
+                "timestamp":    a.get("timestamp"),
+                "source":       a.get("source"),
+                "stats":        a.get("stats"),
+                "event":        a.get("event"),
+            })
+        except Exception:
+            pass
+    return {"audits": records}
+
+
+@app.get("/api/audit/{audit_id}")
+async def get_audit(audit_id: str):
+    p = _AUDIT_DIR / f"{audit_id}.json"
+    if not p.exists():
+        raise HTTPException(404, "Audit record not found")
+    with open(p) as f:
+        return json.load(f)
+
+
+@app.get("/api/audit/{audit_id}/csv")
+async def download_audit_csv(audit_id: str):
+    p = _AUDIT_DIR / f"{audit_id}.csv"
+    if not p.exists():
+        raise HTTPException(404, "Audit CSV not found")
+    return FileResponse(p, media_type="text/csv",
+                        headers={"Content-Disposition": f'attachment; filename="{audit_id}.csv"'})
 
 
 # ── Health ────────────────────────────────────────────────────────────────────
