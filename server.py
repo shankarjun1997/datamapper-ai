@@ -55,6 +55,12 @@ _GCP_CREDS          = os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
 _JIRA_URL           = os.getenv("JIRA_URL", "")
 _JIRA_EMAIL         = os.getenv("JIRA_EMAIL", "")
 _JIRA_TOKEN         = os.getenv("JIRA_TOKEN", "")
+_SLACK_WEBHOOK_URL  = os.getenv("SLACK_WEBHOOK_URL", "")
+_SLACK_CHANNEL      = os.getenv("SLACK_CHANNEL", "#datamapper-ai-alerts")
+
+# ── Audit directory ────────────────────────────────────────────────────────
+_AUDIT_DIR = Path(__file__).parent / "audits"
+_AUDIT_DIR.mkdir(exist_ok=True)
 
 # ── In-memory session store ────────────────────────────────────────────────
 _sessions: Dict[str, Dict[str, Any]] = {}
@@ -127,6 +133,66 @@ class MultiLLMClient:
             if m2:
                 return json.loads(m2.group(1))
             raise ValueError(f"LLM did not return valid JSON:\n{raw[:400]}")
+
+
+async def _notify_slack(text: str, session: Dict = None):
+    """Post a notification to Slack via Incoming Webhook."""
+    if not _SLACK_WEBHOOK_URL:
+        return
+    try:
+        blocks = [{"type": "section", "text": {"type": "mrkdwn", "text": text}}]
+        if session:
+            stats = session.get("stats", {})
+            name = session.get("name", session.get("id", "")[:8])
+            blocks.append({"type": "context", "elements": [
+                {"type": "mrkdwn", "text": f"Session: *{name}* | Mapped: {stats.get('mapped',0)} | Review: {stats.get('review',0)} | Unmapped: {stats.get('unmapped',0)} | Avg confidence: {round((stats.get('avg_confidence') or 0)*100)}%"}
+            ]})
+        payload = {"text": text, "blocks": blocks}
+        async with httpx.AsyncClient(timeout=5) as client:
+            await client.post(_SLACK_WEBHOOK_URL, json=payload)
+    except Exception as e:
+        logger.warning("Slack notify failed: %s", e)
+
+
+def _write_audit(session: Dict) -> str:
+    """Write a timestamped audit JSON record when Gate 2 is approved."""
+    sid = session["id"]
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    audit = {
+        "audit_id":    f"{sid[:8]}_{ts}",
+        "session_id":  sid,
+        "session_name": session.get("name", sid[:8]),
+        "timestamp":   _now(),
+        "source":      session.get("filename") or session.get("source_type", "unknown"),
+        "target_mode": session.get("target_mode", "bq"),
+        "bq_project":  session.get("bq_config", {}).get("project", ""),
+        "bq_dataset":  session.get("bq_config", {}).get("dataset", ""),
+        "stats":       session.get("stats", {}),
+        "instructions": session.get("instructions", ""),
+        "jira_context": session.get("jira_context", {}),
+        "mappings":    session.get("mappings", []),
+        "approved_by": "user",
+        "event":       "gate2_approved",
+    }
+    path = _AUDIT_DIR / f"{audit['audit_id']}.json"
+    with open(path, "w") as f:
+        json.dump(audit, f, indent=2, default=str)
+    return audit["audit_id"]
+
+
+def _write_audit_csv(session: Dict, audit_id: str):
+    """Write a CSV snapshot alongside the audit JSON."""
+    mappings = session.get("mappings", [])
+    path = _AUDIT_DIR / f"{audit_id}.csv"
+    fieldnames = [
+        "src_table","src_field","src_type","tgt_table","tgt_column","tgt_type",
+        "mapping_type","business_logic","confidence","tier","status","rationale"
+    ]
+    with open(path, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames)
+        w.writeheader()
+        for m in mappings:
+            w.writerow({k: m.get(k, "") for k in fieldnames})
 
 
 def _make_llm(session: Dict) -> MultiLLMClient:
@@ -759,6 +825,8 @@ async def _run_pipeline(session_id: str):
         })
         session["l3_done"] = True
 
+        await _notify_slack(f"\U0001f5c2️ *Mapping complete — Gate 2 ready for review*\nSession `{session_id[:8]}` finished semantic mapping.", session)
+
         # Gate 2: requires human review — pause here
         session["stage"] = "gate2"
         await emit("gate", {"gate": "gate2", "status": "awaiting",
@@ -841,6 +909,7 @@ async def _run_sql_generation(session_id: str):
 
         await emit("stage", {"stage": "L4", "status": "done", "msg": "SQL generated successfully"})
         await emit("status", {"status": "done", "msg": "Pipeline complete"})
+        await _notify_slack(f"✅ *Pipeline complete — SQL ready*\nSession `{session_id[:8]}` · {len(mapped_rows)} mapped columns", session)
 
     except Exception as e:
         logger.exception("SQL gen error: %s", e)
@@ -1265,11 +1334,16 @@ async def approve_gate2(sid: str):
     s = _session_or_404(sid)
     if s.get("status") != "review":
         raise HTTPException(409, "Session is not at Gate 2 review stage")
+    # Write audit trail before SQL generation
+    audit_id = _write_audit(s)
+    _write_audit_csv(s, audit_id)
+    s["audit_id"] = audit_id
     s["status"]  = "running"
     s["running"] = True
     _sse_queues[sid] = asyncio.Queue()
     asyncio.create_task(_run_sql_generation(sid))
-    return {"ok": True, "msg": "SQL generation started"}
+    asyncio.create_task(_notify_slack(f"\U0001f680 *Gate 2 approved — SQL generation started*\nSession `{sid[:8]}`", s))
+    return {"ok": True, "msg": "SQL generation started", "audit_id": audit_id}
 
 
 # ── SSE event stream ──────────────────────────────────────────────────────────
@@ -1394,6 +1468,7 @@ async def export_csv(sid: str):
     w.writeheader()
     for m in mappings:
         w.writerow({k: m.get(k, "") for k in w.fieldnames})
+    asyncio.create_task(_notify_slack(f"\U0001f4e4 *Export triggered* — CSV\nSession `{sid[:8]}`", s))
     return StreamingResponse(
         io.BytesIO(buf.getvalue().encode()),
         media_type="text/csv",
@@ -1479,6 +1554,7 @@ async def export_xlsx(sid: str):
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
+    asyncio.create_task(_notify_slack(f"\U0001f4e4 *Export triggered* — XLSX\nSession `{sid[:8]}`", s))
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1492,6 +1568,7 @@ async def export_sql(sid: str):
     sql = s.get("generated_sql")
     if not sql:
         raise HTTPException(422, "SQL not yet generated. Complete the pipeline first.")
+    asyncio.create_task(_notify_slack(f"\U0001f4e4 *Export triggered* — SQL\nSession `{sid[:8]}`", s))
     return StreamingResponse(
         io.BytesIO(sql.encode()),
         media_type="text/plain",
@@ -1503,6 +1580,70 @@ async def export_sql(sid: str):
 async def get_sql(sid: str):
     s = _session_or_404(sid)
     return {"sql": s.get("generated_sql", ""), "ready": bool(s.get("generated_sql"))}
+
+
+# ── Slack settings ────────────────────────────────────────────────────────────
+
+class SlackConfig(BaseModel):
+    webhook_url: str
+
+
+@app.post("/api/settings/slack")
+async def set_slack_config(cfg: SlackConfig):
+    global _SLACK_WEBHOOK_URL
+    _SLACK_WEBHOOK_URL = cfg.webhook_url
+    await _notify_slack("✅ *DataMapper AI Slack integration connected!*\nNotifications are now active for this workspace.")
+    return {"ok": True}
+
+
+@app.get("/api/sessions/{sid}/slack-test")
+async def slack_test(sid: str):
+    s = _session_or_404(sid)
+    if not _SLACK_WEBHOOK_URL:
+        raise HTTPException(422, "No Slack webhook configured. POST /api/settings/slack first.")
+    await _notify_slack(f"🔔 *DataMapper AI — Slack test*\nWebhook is working correctly for session `{sid[:8]}`.", s)
+    return {"ok": True, "msg": "Test notification sent"}
+
+
+# ── Audit trail ───────────────────────────────────────────────────────────────
+
+@app.get("/api/audit")
+async def list_audit():
+    """List all audit records."""
+    records = []
+    for p in sorted(_AUDIT_DIR.glob("*.json"), reverse=True):
+        try:
+            with open(p) as f:
+                a = json.load(f)
+            records.append({
+                "audit_id":     a.get("audit_id"),
+                "session_name": a.get("session_name"),
+                "timestamp":    a.get("timestamp"),
+                "source":       a.get("source"),
+                "stats":        a.get("stats"),
+                "event":        a.get("event"),
+            })
+        except Exception:
+            pass
+    return {"audits": records}
+
+
+@app.get("/api/audit/{audit_id}")
+async def get_audit(audit_id: str):
+    p = _AUDIT_DIR / f"{audit_id}.json"
+    if not p.exists():
+        raise HTTPException(404, "Audit record not found")
+    with open(p) as f:
+        return json.load(f)
+
+
+@app.get("/api/audit/{audit_id}/csv")
+async def download_audit_csv(audit_id: str):
+    p = _AUDIT_DIR / f"{audit_id}.csv"
+    if not p.exists():
+        raise HTTPException(404, "Audit CSV not found")
+    return FileResponse(p, media_type="text/csv",
+                        headers={"Content-Disposition": f'attachment; filename="{audit_id}.csv"'})
 
 
 # ── Health ────────────────────────────────────────────────────────────────────
