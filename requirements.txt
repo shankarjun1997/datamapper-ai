@@ -25,3 +25,14 @@ rapidfuzz>=3.6.0
 
 # Pydantic
 pydantic>=2.7.0
+
+# HTTP client (for Jira API)
+httpx>=0.27.0
+
+# Source DB connectors (install per dialect as needed)
+sqlalchemy>=2.0.0
+psycopg2-binary>=2.9.0
+pymysql>=1.1.0
+# snowflake-connector-python>=3.0.0  # uncomment for Snowflake
+# databricks-sql-connector>=3.0.0    # uncomment for Databricks
+# cx_Oracle>=8.0.0                   # uncomment for Oracle (or: oracledb>=1.0.0)
