@@ -36,3 +36,15 @@ pymysql>=1.1.0
 # snowflake-connector-python>=3.0.0  # uncomment for Snowflake
 # databricks-sql-connector>=3.0.0    # uncomment for Databricks
 # cx_Oracle>=8.0.0                   # uncomment for Oracle (or: oracledb>=1.0.0)
+
+# ── Knowledge Graph + Hybrid RAG (feature/kg-hybrid-rag) ─────────────────────
+# Core graph engine — no external DB needed
+networkx>=3.3
+
+# Embedding model for vector retrieval (downloads ~22 MB model on first run)
+sentence-transformers>=3.0.0
+numpy>=1.26.0
+# torch is a transitive dep of sentence-transformers; CPU-only is sufficient:
+# pip install torch --index-url https://download.pytorch.org/whl/cpu
+
+# Set DM_KG_ENABLED=false in .env to disable KG and use batch-LLM mode only

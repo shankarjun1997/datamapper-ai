@@ -43,7 +43,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 logger = logging.getLogger("datamapper")
 
 # ── Global config (overridable per-session via user API keys) ──────────────
-_DEFAULT_PROVIDER   = os.getenv("DM_PROVIDER", "claude")        # claude | deepseek | custom
+_DEFAULT_PROVIDER   = os.getenv("DM_PROVIDER", "deepseek")      # deepseek | claude | custom
 _ANTHROPIC_API_KEY  = os.getenv("ANTHROPIC_API_KEY", "")
 _DEEPSEEK_API_KEY   = os.getenv("LLM_API_KEY", "")
 _DEEPSEEK_BASE_URL  = os.getenv("LLM_BASE_URL", "https://api.deepseek.com/v1")
@@ -59,6 +59,28 @@ _JIRA_TOKEN         = os.getenv("JIRA_TOKEN", "")
 # ── In-memory session store ────────────────────────────────────────────────
 _sessions: Dict[str, Dict[str, Any]] = {}
 _sse_queues: Dict[str, asyncio.Queue] = {}
+
+# ── Knowledge Graph + Hybrid Retriever (optional — graceful fallback) ──────
+_KG_ENABLED = os.getenv("DM_KG_ENABLED", "true").lower() != "false"
+try:
+    from graph_engine import (
+        ingest_source_schema, ingest_target_schema,
+        record_approved_mapping, get_graph_stats, save_graph,
+    )
+    from graph_retriever import build_vector_index, map_table_hybrid
+    logger.info("[kg] Knowledge Graph + Hybrid Retriever loaded")
+    _KG_AVAILABLE = True
+except Exception as _kg_err:
+    logger.warning(f"[kg] Not available — falling back to batch LLM: {_kg_err}")
+    _KG_AVAILABLE = False
+    # stub functions so code paths below don't need guards everywhere
+    def ingest_source_schema(*a, **kw): pass
+    def ingest_target_schema(*a, **kw): pass
+    def record_approved_mapping(*a, **kw): pass
+    def get_graph_stats(): return {}
+    def save_graph(): pass
+    def build_vector_index(*a, **kw): pass
+    def map_table_hybrid(*a, **kw): return []
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -507,6 +529,58 @@ def conf_tier(score: float) -> str:
     return "none"
 
 
+def _auto_business_logic(
+    src_field: str, src_type: str, tgt_type: str,
+    mapping_type: str, mapping_relation: str
+) -> str:
+    """Generate a deterministic BQ SQL business_logic expression when LLM leaves it blank."""
+    s = _normalize_type(src_type)
+    t = _normalize_type(tgt_type)
+    mt = (mapping_type or "Direct").strip()
+    mr = (mapping_relation or "1:1").strip()
+
+    if mt == "Unused":
+        return ""
+    if mt == "Constant":
+        return "'<constant>'"
+    if mt == "Lookup":
+        return f"-- lookup via {src_field}"
+
+    # Type-cast rules
+    if s != t:
+        if t == "STRING":
+            return f"CAST({src_field} AS STRING)"
+        if t == "INT64":
+            return f"CAST({src_field} AS INT64)"
+        if t == "FLOAT64":
+            return f"CAST({src_field} AS FLOAT64)"
+        if t == "NUMERIC":
+            return f"CAST({src_field} AS NUMERIC)"
+        if t == "DATE":
+            return f"DATE({src_field})" if s == "TIMESTAMP" else f"PARSE_DATE('%Y-%m-%d', CAST({src_field} AS STRING))"
+        if t == "TIMESTAMP":
+            return f"TIMESTAMP({src_field})"
+        if t == "BOOLEAN":
+            return f"CAST({src_field} AS BOOL)"
+
+    # Same-type rules
+    if s == "STRING" and t == "STRING":
+        if mt == "Derived":
+            return f"UPPER(TRIM({src_field}))"
+        if mt == "Expression":
+            return f"TRIM({src_field})"
+        return f"TRIM({src_field})"
+
+    # Relation-based
+    if mr == "M:1":
+        return f"COALESCE({src_field}, NULL)"
+    if mr == "1:M":
+        return f"-- split: {src_field} fans out to multiple targets"
+
+    # Default: direct pass-through
+    return src_field
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # AGENTIC MAPPING PIPELINE  (runs in background asyncio task)
 # ─────────────────────────────────────────────────────────────────────────────
@@ -522,7 +596,8 @@ Output format:
     "tgt_table": "<target table>",
     "tgt_column": "<target column>",
     "mapping_type": "<Direct|Derived|Lookup|Constant|Expression|Unused>",
-    "business_logic": "<transformation expression or description, or null>",
+    "mapping_relation": "<1:1|1:M|M:1>",
+    "business_logic": "<BQ SQL expression or null>",
     "llm_confidence": <0.0-1.0 float>,
     "rationale": "<one-line explanation>"
   },
@@ -531,8 +606,21 @@ Output format:
 
 Rules:
 - mapping_type=Unused when there is truly no sensible target.
+- mapping_relation: "1:1" direct column-to-column, "1:M" one source fans out to multiple targets,
+  "M:1" multiple sources aggregate into one target (SUM, CONCAT, COALESCE, etc).
 - llm_confidence reflects your certainty (1.0=certain, 0.0=no match).
-- business_logic: use BQ SQL where possible (e.g. CAST(x AS INT64), DATE(x), UPPER(TRIM(x))).
+- business_logic MUST always be populated with a valid BQ SQL expression:
+    Direct 1:1 same type  → just the column name e.g. customer_id
+    Direct 1:1 type cast  → CAST(src AS TGT_TYPE) e.g. CAST(order_id AS STRING)
+    String → String       → TRIM(src) or UPPER(TRIM(src)) or INITCAP(TRIM(src))
+    Any → DATE            → DATE(src) or PARSE_DATE('%Y-%m-%d', src)
+    Any → TIMESTAMP       → TIMESTAMP(src)
+    Any → BOOLEAN         → CAST(src AS BOOL)
+    Derived               → transformation expression e.g. CONCAT(first_name,' ',last_name)
+    M:1 aggregation       → COALESCE(src, fallback) or CONCAT or SUM etc
+    Lookup                → describe join key e.g. lookup via dim_table.id = src
+    Constant              → literal value e.g. 'USD' or 0
+    Unused                → null
 - Never fabricate target columns — only use columns listed in the target schema.
 """
 
@@ -605,6 +693,12 @@ async def _run_pipeline(session_id: str):
                               "msg": f"Parsed {len(src_tables)} table(s) · {total_cols} source columns"})
         session["l1_done"] = True
 
+        # ── KG: Ingest source schema into knowledge graph ─────────────────────
+        if _KG_ENABLED and _KG_AVAILABLE:
+            src_dict = {t["name"]: t["columns"] for t in src_tables}
+            await asyncio.to_thread(ingest_source_schema, session_id, src_dict)
+            logger.info("[kg] Source schema ingested: %d tables", len(src_dict))
+
         # ── L2: Crawl target schema (BQ or custom files) ──────────────────────
         session["stage"] = "L2"
 
@@ -642,101 +736,179 @@ async def _run_pipeline(session_id: str):
         session["bq_tables"] = bq_tables
         session["l2_done"] = True
 
+        # ── KG: Ingest target schema + build vector index ─────────────────────
+        if _KG_ENABLED and _KG_AVAILABLE:
+            tgt_dict = {t["table"]: t["columns"] for t in bq_tables}
+            await asyncio.to_thread(ingest_target_schema, session_id, tgt_dict)
+            await asyncio.to_thread(build_vector_index, session_id)
+            kg_stats = get_graph_stats()
+            logger.info("[kg] Target schema ingested. Graph: %s", kg_stats)
+
         # Gate 1: auto-approved (no shortlist gate in this flow)
         await emit("gate", {"gate": "gate1", "status": "auto_approved",
                              "msg": "Gate 1 auto-approved — proceeding to semantic mapping"})
 
-        # ── L3: Agentic Semantic Mapping (batched per source table) ───────────
+        # ── L3: Agentic Semantic Mapping ──────────────────────────────────────
         session["stage"] = "L3"
-        await emit("stage", {"stage": "L3", "status": "running", "msg": "Starting semantic mapping…"})
+        use_kg = _KG_ENABLED and _KG_AVAILABLE
+        l3_mode = "Hybrid KG+RAG" if use_kg else "Batch LLM"
+        await emit("stage", {"stage": "L3", "status": "running",
+                              "msg": f"Starting semantic mapping ({l3_mode})…"})
 
-        # Build target schema summary for the prompt
+        # Build target schema lookup (type resolution)
+        tgt_type_lookup: Dict[str, Dict[str, str]] = {}
+        for tbl in bq_tables:
+            tgt_type_lookup[tbl["table"]] = {c["name"]: c["type"] for c in tbl["columns"]}
+
+        # Build target schema summary for legacy prompt (used in batch-LLM path)
         tgt_summary = "\n".join(
             f"Table: {t['table']}\n  Columns: " +
             ", ".join(f"{c['name']}({c['type']})" for c in t["columns"])
             for t in bq_tables
         )
 
-        # Build context-aware system prompt
+        # Build context-aware system prompt / session context string
         mapping_system = _build_mapping_system(session)
+        session_context_str = ""
+        if session.get("instructions"):
+            session_context_str += f"USER INSTRUCTIONS: {session['instructions']}\n"
+        if session.get("jira_context", {}).get("summary"):
+            session_context_str += f"BUSINESS CONTEXT: {session['jira_context']['summary']}\n"
 
         all_mappings: List[Dict] = []
         processed = 0
+        total_src_cols = sum(len(t["columns"]) for t in src_tables)
 
         for src_table in src_tables:
             cols = src_table["columns"]
             tbl_name = src_table["name"]
-            BATCH = 15
 
-            for i in range(0, len(cols), BATCH):
-                batch = cols[i: i + BATCH]
-                src_desc = "\n".join(
-                    f"  - {c['name']} ({c['type']})" + (f" sample={c['sample']}" if c.get("sample") else "")
-                    for c in batch
+            # ── KG path: hybrid retrieval + per-column LLM rerank ────────────
+            if use_kg:
+                kg_rows = await asyncio.to_thread(
+                    map_table_hybrid, llm, tbl_name, cols, session_context_str, 8
                 )
+                for item in kg_rows:
+                    src_col_name = item["src_column"]
+                    src_type_val = item["src_type"]
+                    tgt_table_name = item.get("tgt_table") or ""
+                    tgt_col_name   = item.get("tgt_column") or ""
+                    tgt_col_type   = tgt_type_lookup.get(tgt_table_name, {}).get(tgt_col_name, "STRING")
+                    mapping_type   = item.get("mapping_type", "Direct")
+                    mapping_relation = item.get("mapping_relation", "1:1")
+                    is_unused = mapping_type.lower() == "unused" or not tgt_col_name
+                    confidence = 0.0 if is_unused else item.get("confidence", 0.0)
 
-                prompt = (
-                    f"SOURCE TABLE: {tbl_name}\n"
-                    f"SOURCE COLUMNS TO MAP:\n{src_desc}\n\n"
-                    f"TARGET SCHEMA:\n{tgt_summary}\n\n"
-                    "Map each source column to its best target. Return JSON array."
-                )
+                    raw_logic = (item.get("business_logic") or "").strip()
+                    if not raw_logic and not is_unused:
+                        raw_logic = _auto_business_logic(
+                            src_col_name, src_type_val, tgt_col_type, mapping_type, mapping_relation
+                        )
 
-                try:
-                    raw_result = await asyncio.to_thread(llm.complete_json, mapping_system, prompt)
-                    if isinstance(raw_result, dict):
-                        raw_result = raw_result.get("mappings", [raw_result])
-                except Exception as e:
-                    logger.warning("LLM mapping batch failed: %s", e)
-                    raw_result = []
-
-                # Enrich with deterministic confidence floor
-                for item in raw_result:
-                    src_col = next((c for c in batch if c["name"] == item.get("src_field")), None)
-                    tgt_table_name = item.get("tgt_table", "")
-                    tgt_col_name   = item.get("tgt_column", "")
-
-                    # Find target column type
-                    tgt_col_type = "STRING"
-                    for tbl in bq_tables:
-                        if tbl["table"] == tgt_table_name:
-                            for col in tbl["columns"]:
-                                if col["name"] == tgt_col_name:
-                                    tgt_col_type = col["type"]
-                                    break
-
-                    name_sim = _name_score(item.get("src_field", ""), tgt_col_name) if tgt_col_name else 0.0
-                    type_sim = _type_score(src_col["type"] if src_col else "STRING", tgt_col_type) if tgt_col_name else 0.0
-                    llm_conf  = float(item.get("llm_confidence", 0.5))
-
-                    is_unused = item.get("mapping_type", "").lower() == "unused" or not tgt_col_name
-                    confidence = 0.0 if is_unused else compute_confidence(name_sim, type_sim, llm_conf)
-
-                    row_id = str(uuid.uuid4())
                     all_mappings.append({
-                        "id":             row_id,
-                        "src_table":      tbl_name,
-                        "src_field":      item.get("src_field", ""),
-                        "src_type":       src_col["type"] if src_col else "STRING",
-                        "tgt_table":      tgt_table_name if not is_unused else "",
-                        "tgt_column":     tgt_col_name if not is_unused else "",
-                        "tgt_type":       tgt_col_type if not is_unused else "",
-                        "mapping_type":   item.get("mapping_type", "Direct"),
-                        "business_logic": item.get("business_logic", "") or "",
-                        "confidence":     confidence,
-                        "tier":           conf_tier(confidence),
-                        "status":         "unmapped" if is_unused else ("review" if confidence < 0.8 else "mapped"),
-                        "rationale":      item.get("rationale", ""),
-                        "llm_confidence": llm_conf,
-                        "name_sim":       round(name_sim, 3),
-                        "type_sim":       round(type_sim, 3),
-                        "modified":       False,
+                        "id":                str(uuid.uuid4()),
+                        "src_table":         tbl_name,
+                        "src_field":         src_col_name,
+                        "src_type":          src_type_val,
+                        "tgt_table":         tgt_table_name if not is_unused else "",
+                        "tgt_column":        tgt_col_name   if not is_unused else "",
+                        "tgt_type":          tgt_col_type   if not is_unused else "",
+                        "mapping_type":      mapping_type,
+                        "mapping_relation":  mapping_relation,
+                        "business_logic":    raw_logic,
+                        "confidence":        confidence,
+                        "tier":              conf_tier(confidence),
+                        "status":            "unmapped" if is_unused else ("review" if confidence < 0.80 else "mapped"),
+                        "rationale":         item.get("reason", ""),
+                        "llm_confidence":    item.get("llm_score", 0.0),
+                        "name_sim":          item.get("name_score", 0.0),
+                        "type_sim":          item.get("type_score", 0.0),
+                        "retrieval_candidates": item.get("retrieval_candidates", []),
+                        "kg_mode":           True,
+                        "modified":          False,
                     })
+                processed += len(cols)
 
-                processed += len(batch)
-                total = sum(len(t["columns"]) for t in src_tables)
-                await emit("progress", {"processed": processed, "total": total,
-                                         "msg": f"Mapped {processed}/{total} columns…"})
+            # ── Batch LLM fallback path (unchanged) ──────────────────────────
+            else:
+                BATCH = 15
+                for i in range(0, len(cols), BATCH):
+                    batch = cols[i: i + BATCH]
+                    src_desc = "\n".join(
+                        f"  - {c['name']} ({c['type']})" + (f" sample={c['sample']}" if c.get("sample") else "")
+                        for c in batch
+                    )
+                    prompt = (
+                        f"SOURCE TABLE: {tbl_name}\n"
+                        f"SOURCE COLUMNS TO MAP:\n{src_desc}\n\n"
+                        f"TARGET SCHEMA:\n{tgt_summary}\n\n"
+                        "Map each source column to its best target. Return JSON array."
+                    )
+                    try:
+                        raw_result = await asyncio.to_thread(llm.complete_json, mapping_system, prompt)
+                        if isinstance(raw_result, dict):
+                            raw_result = raw_result.get("mappings", [raw_result])
+                    except Exception as e:
+                        logger.warning("LLM mapping batch failed: %s", e)
+                        raw_result = []
+
+                    for item in raw_result:
+                        src_col = next((c for c in batch if c["name"] == item.get("src_field")), None)
+                        tgt_table_name = item.get("tgt_table", "")
+                        tgt_col_name   = item.get("tgt_column", "")
+                        tgt_col_type   = tgt_type_lookup.get(tgt_table_name, {}).get(tgt_col_name, "STRING")
+
+                        name_sim = _name_score(item.get("src_field", ""), tgt_col_name) if tgt_col_name else 0.0
+                        type_sim = _type_score(src_col["type"] if src_col else "STRING", tgt_col_type) if tgt_col_name else 0.0
+                        llm_conf = float(item.get("llm_confidence", 0.5))
+                        is_unused = item.get("mapping_type", "").lower() == "unused" or not tgt_col_name
+                        confidence = 0.0 if is_unused else compute_confidence(name_sim, type_sim, llm_conf)
+
+                        row_id = str(uuid.uuid4())
+                        mapping_type     = item.get("mapping_type", "Direct") or "Direct"
+                        mapping_relation = item.get("mapping_relation", "1:1") or "1:1"
+                        src_type_val     = src_col["type"] if src_col else "STRING"
+                        raw_logic        = (item.get("business_logic") or "").strip()
+                        if not raw_logic and not is_unused:
+                            raw_logic = _auto_business_logic(
+                                item.get("src_field", ""), src_type_val, tgt_col_type,
+                                mapping_type, mapping_relation
+                            )
+                        all_mappings.append({
+                            "id":               row_id,
+                            "src_table":        tbl_name,
+                            "src_field":        item.get("src_field", ""),
+                            "src_type":         src_type_val,
+                            "tgt_table":        tgt_table_name if not is_unused else "",
+                            "tgt_column":       tgt_col_name   if not is_unused else "",
+                            "tgt_type":         tgt_col_type   if not is_unused else "",
+                            "mapping_type":     mapping_type,
+                            "mapping_relation": mapping_relation,
+                            "business_logic":   raw_logic,
+                            "confidence":       confidence,
+                            "tier":             conf_tier(confidence),
+                            "status":           "unmapped" if is_unused else ("review" if confidence < 0.8 else "mapped"),
+                            "rationale":        item.get("rationale", ""),
+                            "llm_confidence":   llm_conf,
+                            "name_sim":         round(name_sim, 3),
+                            "type_sim":         round(type_sim, 3),
+                            "kg_mode":          False,
+                            "modified":         False,
+                        })
+
+                    processed += len(batch)
+
+            await emit("progress", {"processed": processed, "total": total_src_cols,
+                                     "msg": f"Mapped {processed}/{total_src_cols} columns ({l3_mode})…"})
+
+        # ── Sanitize: fix rows marked mapped/review but missing tgt_column ──────
+        for m in all_mappings:
+            if not m.get("tgt_column") and m["status"] != "unmapped":
+                m["status"]     = "unmapped"
+                m["tgt_table"]  = ""
+                m["tgt_column"] = ""
+                m["confidence"] = 0.0
+                m["tier"]       = "none"
 
         session["mappings"] = all_mappings
         n_mapped   = sum(1 for m in all_mappings if m["status"] == "mapped")
@@ -1312,11 +1484,12 @@ async def get_mappings(sid: str):
 
 
 class MappingPatch(BaseModel):
-    tgt_table:      Optional[str] = None
-    tgt_column:     Optional[str] = None
-    mapping_type:   Optional[str] = None
-    business_logic: Optional[str] = None
-    status:         Optional[str] = None
+    tgt_table:        Optional[str] = None
+    tgt_column:       Optional[str] = None
+    mapping_type:     Optional[str] = None
+    mapping_relation: Optional[str] = None
+    business_logic:   Optional[str] = None
+    status:           Optional[str] = None
 
 
 @app.patch("/api/sessions/{sid}/mappings/{row_id}")
@@ -1366,16 +1539,59 @@ async def approve_mapping(sid: str, row_id: str):
     row = next((m for m in s.get("mappings", []) if m["id"] == row_id), None)
     if not row:
         raise HTTPException(404, "Row not found")
-    row["status"] = "mapped"
+    row["status"]   = "mapped"
     row["modified"] = True
-    # Record to session memory for future runs
     s.setdefault("mapping_memory", []).append({
-        "src": row.get("src_field", ""),
-        "tgt": row.get("tgt_column", ""),
-        "type": row.get("mapping_type", ""),
-        "logic": row.get("business_logic", ""),
+        "src":      row.get("src_field", ""),
+        "tgt":      row.get("tgt_column", ""),
+        "type":     row.get("mapping_type", ""),
+        "logic":    row.get("business_logic", ""),
+        "relation": row.get("mapping_relation", "1:1"),
     })
+
+    # ── KG: Record approved mapping as a graph edge ───────────────────────────
+    if _KG_ENABLED and _KG_AVAILABLE and row.get("tgt_column"):
+        try:
+            record_approved_mapping(
+                session_id=sid,
+                src_table=row.get("src_table", ""),
+                src_col=row.get("src_field", ""),
+                src_type=row.get("src_type", "STRING"),
+                tgt_table=row.get("tgt_table", ""),
+                tgt_col=row.get("tgt_column", ""),
+                tgt_type=row.get("tgt_type", "STRING"),
+                mapping_type=row.get("mapping_type", "Direct"),
+                business_logic=row.get("business_logic", ""),
+                confidence=row.get("confidence", 0.0),
+                relation=row.get("mapping_relation", "1:1"),
+            )
+        except Exception as _kg_err:
+            logger.warning("[kg] record_approved_mapping failed: %s", _kg_err)
+
     return {"ok": True}
+
+
+@app.post("/api/sessions/{sid}/mappings/{row_id}/restore")
+async def restore_mapping(sid: str, row_id: str):
+    """Restore an accidentally unmapped row back to review status."""
+    s = _session_or_404(sid)
+    row = next((m for m in s.get("mappings", []) if m["id"] == row_id), None)
+    if not row:
+        raise HTTPException(404, "Row not found")
+    if row.get("tgt_column"):
+        row["status"]     = "review"
+        row["confidence"] = row.get("llm_confidence") or 0.5
+        row["tier"]       = conf_tier(row["confidence"])
+        row["modified"]   = True
+        # Regenerate business logic if missing
+        if not row.get("business_logic"):
+            row["business_logic"] = _auto_business_logic(
+                row.get("src_field",""), row.get("src_type","STRING"),
+                row.get("tgt_type","STRING"), row.get("mapping_type","Direct"),
+                row.get("mapping_relation","1:1")
+            )
+        return {"ok": True, "status": "review", "row": row}
+    return {"ok": False, "msg": "No target assigned — assign tgt_table.tgt_column first"}
 
 
 # ── Export ────────────────────────────────────────────────────────────────────
@@ -1523,7 +1739,68 @@ async def health():
 
 @app.get("/api/version")
 async def version():
-    return {"version": "1.0.0", "name": "DataMapper AI", "stage": "v1"}
+    return {"version": "1.1.0", "name": "DataMapper AI", "stage": "v1.1-kg"}
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# KNOWLEDGE GRAPH API
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.get("/api/graph/stats")
+async def graph_stats():
+    """Graph node/edge summary — useful for debugging and monitoring."""
+    if not (_KG_ENABLED and _KG_AVAILABLE):
+        return {"kg_enabled": False, "msg": "Knowledge Graph not available"}
+    return {"kg_enabled": True, **get_graph_stats()}
+
+
+@app.get("/api/graph/domains")
+async def graph_domains():
+    """List all domain nodes and how many target columns each has."""
+    if not (_KG_ENABLED and _KG_AVAILABLE):
+        return []
+    from graph_engine import get_domain_columns, _DOMAIN_KEYWORDS
+    return [
+        {"domain": d, "tgt_columns": len(get_domain_columns(d, side="tgt"))}
+        for d in list(_DOMAIN_KEYWORDS.keys()) + ["General"]
+    ]
+
+
+@app.get("/api/graph/candidates")
+async def graph_candidates(src_table: str, src_col: str, src_type: str = "STRING", top_k: int = 8):
+    """
+    Run hybrid retrieval for a single source column and return ranked candidates.
+    Useful for testing retrieval quality interactively.
+    """
+    if not (_KG_ENABLED and _KG_AVAILABLE):
+        return {"kg_enabled": False, "candidates": []}
+    from graph_retriever import retrieve_candidates
+    candidates = await asyncio.to_thread(retrieve_candidates, src_table, src_col, src_type, top_k)
+    return {"kg_enabled": True, "src": f"{src_table}.{src_col}", "candidates": candidates}
+
+
+@app.get("/api/graph/mappings")
+async def graph_past_mappings(src_table: str, src_col: str):
+    """Return all past approved mapping edges for a source column."""
+    if not (_KG_ENABLED and _KG_AVAILABLE):
+        return []
+    from graph_engine import get_past_mappings, _col_node_id
+    nid = _col_node_id("src", src_table, src_col)
+    return get_past_mappings(nid)
+
+
+@app.post("/api/graph/reset")
+async def graph_reset():
+    """Clear in-memory graph and delete persisted snapshot. Use with caution."""
+    if not (_KG_ENABLED and _KG_AVAILABLE):
+        return {"ok": False, "msg": "KG not available"}
+    from graph_engine import reset_graph
+    import os as _os
+    reset_graph()
+    _GRAPH_PATH = _os.path.join(_os.path.dirname(__file__), "audits", "knowledge_graph.json")
+    if _os.path.exists(_GRAPH_PATH):
+        _os.remove(_GRAPH_PATH)
+    return {"ok": True, "msg": "Graph cleared"}
 
 
 if __name__ == "__main__":
