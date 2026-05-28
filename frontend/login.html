@@ -481,6 +481,15 @@ html,body{height:100%;font-family:var(--sans);background:var(--bg-page);color:va
           <span class="btn-spinner"><div class="spinner"></div></span>
         </button>
 
+        <div class="divider">or try a demo</div>
+        <button class="btn-sso" onclick="quickDemoLogin()" id="btnDemo"
+          style="background:linear-gradient(135deg,#0d2a50,#0f3460);border-color:#1a5276;gap:10px">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0fd4b0" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/><path d="M10 8l6 4-6 4V8z"/>
+          </svg>
+          <span>Quick Demo Access</span>
+        </button>
+
         <div class="divider">or sign in with SSO</div>
         <button class="btn-sso" onclick="toast('SSO requires enterprise IdP configuration.','info')">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -815,6 +824,30 @@ async function doLogin() {
 function redirectToApp(tenant, email) {
   const next = new URLSearchParams(location.search).get('next') || '/';
   window.location.href = `${next}?tenant=${encodeURIComponent(tenant)}&user=${encodeURIComponent(email)}`;
+}
+
+async function quickDemoLogin() {
+  const btn = document.getElementById('btnDemo');
+  if (btn) { btn.disabled = true; btn.querySelector('span').textContent = 'Signing in...'; }
+  try {
+    const r = await fetch(`${API}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tenant: 'demo', email: 'demo@xref.ai', password: 'demo', remember: true }),
+    });
+    const d = await r.json();
+    if (!r.ok) { toast(d.detail || 'Demo login failed', 'error'); return; }
+    localStorage.setItem('xref_auth_token', d.token);
+    localStorage.setItem('xref_user_email', d.email);
+    localStorage.setItem('xref_user_tenant', d.tenant);
+    localStorage.setItem('xref_user_tenant_name', d.tenant_name);
+    localStorage.setItem('xref_user_role', d.role || 'admin');
+    redirectToApp(d.tenant, d.email);
+  } catch(e) {
+    toast('Cannot reach server — is ./run.sh running?', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.querySelector('span').textContent = 'Quick Demo Access'; }
+  }
 }
 
 // ── Password visibility ───────────────────────────────────────────────────

@@ -3174,11 +3174,29 @@ async function checkBackend() {
 
 // ─── INIT ──────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-  // Auth gate — redirect to /login if no token stored
+  // Auth gate — check server config first, then decide whether login is mandatory
   const _tok = localStorage.getItem('xref_auth_token');
   if (!_tok) {
-    window.location.href = '/login?next=' + encodeURIComponent(location.pathname);
-    return;
+    try {
+      const _cfg = await fetch(API + '/api/auth/config').then(r => r.json()).catch(() => ({ require_auth: true }));
+      if (_cfg.require_auth) {
+        window.location.href = '/login?next=' + encodeURIComponent(location.pathname);
+        return;
+      }
+      // Dev mode — auto-issue a demo session token so apiFetch works
+      const _loginR = await fetch(API + '/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tenant: _cfg.demo_tenant || 'demo', email: _cfg.demo_email || 'demo@xref.ai', password: 'demo', remember: true }),
+      }).then(r => r.json()).catch(() => null);
+      if (_loginR && _loginR.token) {
+        localStorage.setItem('xref_auth_token', _loginR.token);
+        localStorage.setItem('xref_user_role', _loginR.role || 'admin');
+        localStorage.setItem('xref_user_tenant', _loginR.tenant || 'demo');
+      }
+    } catch (_e) {
+      // Server not running — proceed anyway, apiFetch will show "Backend not reachable"
+    }
   }
 
   // Check backend first — show status before any other API calls

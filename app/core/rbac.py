@@ -22,10 +22,22 @@ from typing import Optional
 from fastapi import HTTPException, Request
 
 from app.core.auth import _verify_token
+from app.config import _REQUIRE_AUTH
 from app.state import _TENANTS
 
 
 ROLE_HIERARCHY = {"admin": 4, "mapper": 3, "reviewer": 2, "readonly": 1}
+
+# Guest identity used when XREF_REQUIRE_AUTH=false and no token is sent.
+_GUEST_USER = {
+    "email":       "guest@local",
+    "tenant":      "demo",
+    "tenant_name": "Demo Workspace",
+    "plan":        "standard",
+    "role":        "admin",   # full access in dev so nothing is blocked
+    "active":      True,
+    "display_name": "Guest (dev)",
+}
 
 
 def get_user_from_request(request: Request) -> Optional[dict]:
@@ -70,13 +82,19 @@ def get_user_from_request(request: Request) -> Optional[dict]:
 
 def require_role(min_role: str):
     """FastAPI dependency factory — raises 401 if no auth, 403 if role too low,
-    403 if the user has been deactivated."""
+    403 if the user has been deactivated.
+
+    When XREF_REQUIRE_AUTH=false (default in dev), missing tokens fall back to
+    _GUEST_USER (admin role) so the app works without logging in."""
     if min_role not in ROLE_HIERARCHY:
         raise ValueError(f"Unknown role: {min_role}")
 
     async def _check(request: Request):
         user = get_user_from_request(request)
         if not user:
+            if not _REQUIRE_AUTH:
+                # Dev mode — allow unauthenticated requests as guest admin
+                return _GUEST_USER
             raise HTTPException(401, "Authentication required")
         if user.get("active") is False:
             raise HTTPException(403, "User account is deactivated")

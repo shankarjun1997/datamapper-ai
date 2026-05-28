@@ -15,7 +15,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
-from app.config import _AUTH_TOKEN_TTL
+from app.config import _AUTH_TOKEN_TTL, _REQUIRE_AUTH
 from app.core.audit import _write_audit_event
 from app.core.auth import _get_tenant_from_request, _sign_token, _verify_token
 from app.core.oidc import (
@@ -90,6 +90,22 @@ class PatchUserBody(BaseModel):
 class ChangePasswordBody(BaseModel):
     current_password: str
     new_password: str
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Auth config (lets the frontend know if login is mandatory)
+# ─────────────────────────────────────────────────────────────────────────────
+
+@router.get("/api/auth/config")
+async def auth_config():
+    """Returns whether the server requires authentication.
+    XREF_REQUIRE_AUTH=false (default) → login optional, guest access allowed.
+    XREF_REQUIRE_AUTH=true  → login mandatory (production mode)."""
+    return {
+        "require_auth": _REQUIRE_AUTH,
+        "demo_tenant":  "demo" if not _REQUIRE_AUTH else None,
+        "demo_email":   "demo@xref.ai" if not _REQUIRE_AUTH else None,
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────

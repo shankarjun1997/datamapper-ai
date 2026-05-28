@@ -18,6 +18,12 @@ fi
 echo "→ Starting server on http://localhost:7788"
 echo "→ Open http://localhost:7788 in your browser"
 echo ""
+echo "  Demo credentials (if login page appears):"
+echo "    Workspace : demo"
+echo "    Email     : demo@xref.ai"
+echo "    Password  : demo"
+echo "  Or click 'Quick Demo Access' to skip manual entry."
+echo ""
 
 # Use the modular app package (app/main.py) if present, fall back to legacy server.py
 if [ -f "app/main.py" ]; then

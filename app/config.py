@@ -44,6 +44,11 @@ _JIRA_TOKEN         = os.getenv("JIRA_TOKEN", "")
 _AUTH_SECRET     = os.getenv("XREF_SECRET_KEY", "xref-demo-secret-change-in-prod-2026")
 _AUTH_TOKEN_TTL  = int(os.getenv("XREF_TOKEN_TTL_HOURS", "24")) * 3600  # seconds
 
+# Set XREF_REQUIRE_AUTH=true in production to enforce login.
+# In dev (default) auth is optional — the app works without a token,
+# using the "demo" tenant as a guest identity.
+_REQUIRE_AUTH = os.getenv("XREF_REQUIRE_AUTH", "false").lower() == "true"
+
 _DEFAULT_TENANTS = [
     {
         "slug": "infinite",
