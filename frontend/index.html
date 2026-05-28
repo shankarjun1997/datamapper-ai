@@ -643,6 +643,73 @@ code,pre{font-family:var(--mono)}
   padding:14px 18px;border-top:1px solid var(--border);
   font-size:11px;color:var(--text-3);
 }
+
+/* ── USER IDENTITY WIDGET ── */
+.user-chip{
+  display:flex;align-items:center;gap:9px;padding:8px 10px;
+  background:var(--bg-3);border:1px solid var(--border-2);
+  border-radius:10px;cursor:pointer;transition:border-color .15s,background .15s;
+  position:relative;width:100%;margin-bottom:10px;
+}
+.user-chip:hover{background:var(--bg-4);border-color:var(--cyan)}
+.user-avatar{
+  width:30px;height:30px;border-radius:8px;
+  background:linear-gradient(135deg,var(--cyan),var(--brand-blue,#2955d4));
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:700;color:#fff;flex-shrink:0;
+}
+.user-info{flex:1;overflow:hidden;min-width:0}
+.user-email{font-size:11px;font-weight:600;color:var(--text-1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.user-meta{font-size:10px;color:var(--text-3);display:flex;align-items:center;gap:5px;margin-top:1px}
+.user-role-badge{
+  font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;
+  padding:1px 5px;border-radius:3px;
+}
+.role-admin{background:rgba(0,212,255,.15);color:var(--cyan)}
+.role-mapper{background:rgba(74,222,128,.15);color:var(--green)}
+.role-reviewer{background:rgba(251,146,60,.15);color:var(--orange)}
+.role-readonly{background:rgba(156,163,175,.12);color:var(--text-3)}
+
+/* User dropdown */
+.user-dropdown{
+  position:absolute;bottom:calc(100% + 6px);left:0;right:0;
+  background:var(--bg-2);border:1px solid var(--border-2);
+  border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.5);
+  z-index:200;overflow:hidden;display:none;
+}
+.user-dropdown.open{display:block}
+.user-dropdown-header{padding:12px 14px;border-bottom:1px solid var(--border)}
+.user-dropdown-email{font-size:12px;font-weight:600;color:var(--text-1)}
+.user-dropdown-tenant{font-size:11px;color:var(--text-3);margin-top:2px}
+.user-dropdown-actions{padding:6px}
+.user-dropdown-btn{
+  display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;
+  background:none;border:none;border-radius:7px;cursor:pointer;
+  font-size:12px;color:var(--text-2);text-align:left;transition:background .15s;
+}
+.user-dropdown-btn:hover{background:var(--bg-3);color:var(--text-1)}
+.user-dropdown-btn.danger{color:var(--red)}
+.user-dropdown-btn.danger:hover{background:rgba(248,113,113,.1);color:var(--red)}
+
+/* Topbar user chip (compact) */
+.topbar-user-chip{
+  display:flex;align-items:center;gap:7px;padding:4px 10px 4px 5px;
+  background:var(--bg-3);border:1px solid var(--border-2);border-radius:8px;
+  cursor:pointer;transition:border-color .15s;position:relative;
+  font-size:12px;color:var(--text-2);
+}
+.topbar-user-chip:hover{border-color:var(--cyan);color:var(--text-1)}
+.topbar-avatar{width:22px;height:22px;border-radius:5px;
+  background:linear-gradient(135deg,var(--cyan),#2955d4);
+  display:flex;align-items:center;justify-content:center;
+  font-size:10px;font-weight:700;color:#fff}
+.topbar-dropdown{
+  position:absolute;top:calc(100% + 6px);right:0;min-width:220px;
+  background:var(--bg-2);border:1px solid var(--border-2);
+  border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.5);
+  z-index:300;overflow:hidden;display:none;
+}
+.topbar-dropdown.open{display:block}
 .status-dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:6px}
 .dot-green{background:var(--green);box-shadow:0 0 6px var(--green)}
 .dot-orange{background:var(--orange)}
@@ -1601,6 +1668,36 @@ select.cell-edit{
   </div>
 
   <div class="sidebar-footer">
+    <!-- User identity chip -->
+    <div class="user-chip" id="sidebarUserChip" onclick="toggleUserDropdown('sidebar')">
+      <div class="user-avatar" id="sidebarAvatar">?</div>
+      <div class="user-info">
+        <div class="user-email" id="sidebarEmail">Not signed in</div>
+        <div class="user-meta">
+          <span class="user-role-badge role-readonly" id="sidebarRoleBadge">guest</span>
+          <span id="sidebarTenant" style="font-size:10px;color:var(--text-3)"></span>
+        </div>
+      </div>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;color:var(--text-3)"><polyline points="18 15 12 9 6 15"/></svg>
+      <!-- Dropdown -->
+      <div class="user-dropdown" id="sidebarUserDropdown" onclick="event.stopPropagation()">
+        <div class="user-dropdown-header">
+          <div class="user-dropdown-email" id="dropEmail">—</div>
+          <div class="user-dropdown-tenant" id="dropTenant">—</div>
+        </div>
+        <div class="user-dropdown-actions">
+          <button class="user-dropdown-btn" onclick="switchToLogin()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            Switch Account
+          </button>
+          <button class="user-dropdown-btn" onclick="doLogout()" style="color:var(--red)">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            Sign Out
+          </button>
+        </div>
+      </div>
+    </div>
+
     <div id="sidebarStatus" style="margin-bottom:8px">
       <span class="status-dot dot-gray"></span>No active session
     </div>
@@ -1652,6 +1749,29 @@ select.cell-edit{
     </div>
     <div class="topbar-session-badge" id="sessionBadge">No session</div>
     <button class="btn btn-primary btn-sm" onclick="newSession()">+ New Session</button>
+
+    <!-- Topbar user chip -->
+    <div class="topbar-user-chip" id="topbarUserChip" onclick="toggleUserDropdown('topbar')">
+      <div class="topbar-avatar" id="topbarAvatar">?</div>
+      <span id="topbarUserLabel" style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Guest</span>
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      <div class="topbar-dropdown" id="topbarUserDropdown" onclick="event.stopPropagation()">
+        <div class="user-dropdown-header">
+          <div class="user-dropdown-email" id="topbarDropEmail">—</div>
+          <div class="user-dropdown-tenant" id="topbarDropTenant">—</div>
+        </div>
+        <div class="user-dropdown-actions">
+          <button class="user-dropdown-btn" onclick="switchToLogin()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            Switch Account
+          </button>
+          <button class="user-dropdown-btn danger" onclick="doLogout()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+            Sign Out
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <!-- ── VIEW: DASHBOARD ──────────────────── -->
@@ -3221,7 +3341,89 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Re-check backend every 30s so status dot stays live
   setInterval(checkBackend, 30000);
+
+  // Populate user identity widget
+  initUserWidget();
 });
+
+// ─── USER IDENTITY WIDGET ──────────────────────────────
+function initUserWidget() {
+  const email  = localStorage.getItem('xref_user_email')  || localStorage.getItem('xref_user_tenant') && 'demo@xref.ai' || 'Guest';
+  const role   = localStorage.getItem('xref_user_role')   || 'guest';
+  const tenant = localStorage.getItem('xref_user_tenant') || '';
+  const tname  = localStorage.getItem('xref_user_tenant_name') || tenant || 'Local';
+  const initial = email.charAt(0).toUpperCase();
+
+  // Sidebar chip
+  const sbAvatar = document.getElementById('sidebarAvatar');
+  const sbEmail  = document.getElementById('sidebarEmail');
+  const sbBadge  = document.getElementById('sidebarRoleBadge');
+  const sbTenant = document.getElementById('sidebarTenant');
+  if (sbAvatar) sbAvatar.textContent = initial;
+  if (sbEmail)  sbEmail.textContent  = email;
+  if (sbBadge)  { sbBadge.textContent = role; sbBadge.className = 'user-role-badge role-' + role; }
+  if (sbTenant) sbTenant.textContent = tname;
+
+  // Dropdown content
+  ['drop','topbarDrop'].forEach(prefix => {
+    const el1 = document.getElementById(prefix + 'Email');
+    const el2 = document.getElementById(prefix + 'Tenant');
+    if (el1) el1.textContent = email;
+    if (el2) el2.textContent = `${tname} · ${role}`;
+  });
+
+  // Topbar chip
+  const tbAvatar = document.getElementById('topbarAvatar');
+  const tbLabel  = document.getElementById('topbarUserLabel');
+  if (tbAvatar) tbAvatar.textContent = initial;
+  if (tbLabel)  tbLabel.textContent  = email.split('@')[0];
+}
+
+function toggleUserDropdown(source) {
+  const dropId = source === 'sidebar' ? 'sidebarUserDropdown' : 'topbarUserDropdown';
+  const drop   = document.getElementById(dropId);
+  if (!drop) return;
+  const isOpen = drop.classList.contains('open');
+  // Close all dropdowns first
+  document.querySelectorAll('.user-dropdown, .topbar-dropdown').forEach(d => d.classList.remove('open'));
+  if (!isOpen) drop.classList.add('open');
+}
+
+// Close dropdowns when clicking outside
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.user-chip') && !e.target.closest('.topbar-user-chip')) {
+    document.querySelectorAll('.user-dropdown, .topbar-dropdown').forEach(d => d.classList.remove('open'));
+  }
+});
+
+async function doLogout() {
+  document.querySelectorAll('.user-dropdown, .topbar-dropdown').forEach(d => d.classList.remove('open'));
+  try {
+    const token = localStorage.getItem('xref_auth_token');
+    if (token) {
+      await fetch(API + '/api/auth/logout', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + token }
+      }).catch(() => {});
+    }
+  } finally {
+    localStorage.removeItem('xref_auth_token');
+    localStorage.removeItem('xref_user_email');
+    localStorage.removeItem('xref_user_tenant');
+    localStorage.removeItem('xref_user_tenant_name');
+    localStorage.removeItem('xref_user_role');
+    localStorage.removeItem('dm_session_id');
+    toast('Signed out — redirecting to login…', 'info');
+    setTimeout(() => { window.location.href = '/login'; }, 900);
+  }
+}
+
+function switchToLogin() {
+  document.querySelectorAll('.user-dropdown, .topbar-dropdown').forEach(d => d.classList.remove('open'));
+  // Keep current token valid but force re-auth
+  localStorage.removeItem('xref_auth_token');
+  window.location.href = '/login?next=/';
+}
 
 // ─── MOBILE SIDEBAR TOGGLE ─────────────────────────────
 function openSidebar() {
