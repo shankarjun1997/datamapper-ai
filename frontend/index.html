@@ -674,22 +674,49 @@ code,pre{font-family:var(--mono)}
 .user-dropdown{
   position:absolute;bottom:calc(100% + 6px);left:0;right:0;
   background:var(--bg-2);border:1px solid var(--border-2);
-  border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.5);
-  z-index:200;overflow:hidden;display:none;
+  border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,.6);
+  z-index:200;overflow:hidden;display:none;min-width:240px;
 }
-.user-dropdown.open{display:block}
-.user-dropdown-header{padding:12px 14px;border-bottom:1px solid var(--border)}
-.user-dropdown-email{font-size:12px;font-weight:600;color:var(--text-1)}
-.user-dropdown-tenant{font-size:11px;color:var(--text-3);margin-top:2px}
-.user-dropdown-actions{padding:6px}
+.user-dropdown.open{display:block;animation:dropIn .15s ease}
+@keyframes dropIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+/* Profile card inside dropdown */
+.udrop-profile{
+  padding:14px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:10px;background:var(--bg-1);
+}
+.udrop-avatar-lg{
+  width:36px;height:36px;border-radius:9px;flex-shrink:0;
+  background:linear-gradient(135deg,var(--cyan),var(--brand-blue,#2955d4));
+  display:flex;align-items:center;justify-content:center;
+  font-size:15px;font-weight:700;color:#fff;
+}
+.udrop-name{font-size:12px;font-weight:600;color:var(--text-1)}
+.udrop-email{font-size:10px;color:var(--text-3);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:160px}
+.udrop-plan{
+  display:inline-block;font-size:9px;font-weight:700;text-transform:uppercase;
+  letter-spacing:.06em;padding:2px 6px;border-radius:4px;margin-top:3px;
+}
+.plan-enterprise{background:rgba(15,212,176,.15);color:#0fd4b0}
+.plan-trial{background:rgba(251,146,60,.18);color:var(--orange)}
+.plan-standard{background:rgba(77,144,255,.15);color:var(--cyan)}
+/* Section labels */
+.udrop-section{
+  padding:8px 14px 3px;font-size:9px;font-weight:700;text-transform:uppercase;
+  letter-spacing:.08em;color:var(--text-3);
+}
+.udrop-divider{height:1px;background:var(--border);margin:4px 0}
+.user-dropdown-actions{padding:4px 6px 6px}
 .user-dropdown-btn{
-  display:flex;align-items:center;gap:9px;width:100%;padding:8px 10px;
+  display:flex;align-items:center;gap:9px;width:100%;padding:7px 10px;
   background:none;border:none;border-radius:7px;cursor:pointer;
   font-size:12px;color:var(--text-2);text-align:left;transition:background .15s;
 }
 .user-dropdown-btn:hover{background:var(--bg-3);color:var(--text-1)}
 .user-dropdown-btn.danger{color:var(--red)}
 .user-dropdown-btn.danger:hover{background:rgba(248,113,113,.1);color:var(--red)}
+.udrop-btn-kbd{margin-left:auto;font-size:9px;color:var(--text-3);
+  background:var(--bg-3);border:1px solid var(--border-2);
+  border-radius:3px;padding:1px 4px;font-family:monospace;}
 
 /* Topbar user chip (compact) */
 .topbar-user-chip{
@@ -704,12 +731,12 @@ code,pre{font-family:var(--mono)}
   display:flex;align-items:center;justify-content:center;
   font-size:10px;font-weight:700;color:#fff}
 .topbar-dropdown{
-  position:absolute;top:calc(100% + 6px);right:0;min-width:220px;
+  position:absolute;top:calc(100% + 6px);right:0;min-width:260px;
   background:var(--bg-2);border:1px solid var(--border-2);
-  border-radius:10px;box-shadow:0 8px 32px rgba(0,0,0,.5);
+  border-radius:12px;box-shadow:0 8px 40px rgba(0,0,0,.6);
   z-index:300;overflow:hidden;display:none;
 }
-.topbar-dropdown.open{display:block}
+.topbar-dropdown.open{display:block;animation:dropIn .15s ease}
 .status-dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:6px}
 .dot-green{background:var(--green);box-shadow:0 0 6px var(--green)}
 .dot-orange{background:var(--orange)}
@@ -1681,16 +1708,57 @@ select.cell-edit{
       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;color:var(--text-3)"><polyline points="18 15 12 9 6 15"/></svg>
       <!-- Dropdown -->
       <div class="user-dropdown" id="sidebarUserDropdown" onclick="event.stopPropagation()">
-        <div class="user-dropdown-header">
-          <div class="user-dropdown-email" id="dropEmail">—</div>
-          <div class="user-dropdown-tenant" id="dropTenant">—</div>
+        <!-- Profile card -->
+        <div class="udrop-profile">
+          <div class="udrop-avatar-lg" id="sbDropAvatar">?</div>
+          <div style="flex:1;min-width:0">
+            <div class="udrop-name" id="sbDropName">—</div>
+            <div class="udrop-email" id="sbDropEmail">—</div>
+            <span class="udrop-plan plan-standard" id="sbDropPlan">standard</span>
+          </div>
         </div>
+        <!-- Workspace section -->
+        <div class="udrop-section">Workspace</div>
+        <div class="user-dropdown-actions" style="padding-bottom:0">
+          <button class="user-dropdown-btn" onclick="openWorkspaceConfig()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            Workspace Settings
+          </button>
+          <button class="user-dropdown-btn" onclick="openTeamPanel()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            Team Members
+          </button>
+          <button class="user-dropdown-btn" onclick="openBillingPanel()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+            Usage &amp; Billing
+          </button>
+        </div>
+        <div class="udrop-divider"></div>
+        <!-- Account section -->
+        <div class="udrop-section">Account</div>
+        <div class="user-dropdown-actions" style="padding-bottom:0">
+          <button class="user-dropdown-btn" onclick="openMyProfile()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            My Profile
+          </button>
+          <button class="user-dropdown-btn" onclick="openApiKeys()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+            API Keys
+          </button>
+          <button class="user-dropdown-btn" onclick="showKeyboardShortcuts()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/></svg>
+            Keyboard Shortcuts
+            <span class="udrop-btn-kbd">?</span>
+          </button>
+        </div>
+        <div class="udrop-divider"></div>
+        <!-- Session section -->
         <div class="user-dropdown-actions">
           <button class="user-dropdown-btn" onclick="switchToLogin()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 16l4-4-4-4"/><path d="M21 12H9"/><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/></svg>
             Switch Account
           </button>
-          <button class="user-dropdown-btn" onclick="doLogout()" style="color:var(--red)">
+          <button class="user-dropdown-btn danger" onclick="doLogout()">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
             Sign Out
           </button>
@@ -1756,13 +1824,54 @@ select.cell-edit{
       <span id="topbarUserLabel" style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Guest</span>
       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
       <div class="topbar-dropdown" id="topbarUserDropdown" onclick="event.stopPropagation()">
-        <div class="user-dropdown-header">
-          <div class="user-dropdown-email" id="topbarDropEmail">—</div>
-          <div class="user-dropdown-tenant" id="topbarDropTenant">—</div>
+        <!-- Profile card -->
+        <div class="udrop-profile">
+          <div class="udrop-avatar-lg" id="tbDropAvatar">?</div>
+          <div style="flex:1;min-width:0">
+            <div class="udrop-name" id="tbDropName">—</div>
+            <div class="udrop-email" id="tbDropEmail">—</div>
+            <span class="udrop-plan plan-standard" id="tbDropPlan">standard</span>
+          </div>
         </div>
+        <!-- Workspace section -->
+        <div class="udrop-section">Workspace</div>
+        <div class="user-dropdown-actions" style="padding-bottom:0">
+          <button class="user-dropdown-btn" onclick="openWorkspaceConfig()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            Workspace Settings
+          </button>
+          <button class="user-dropdown-btn" onclick="openTeamPanel()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            Team Members
+          </button>
+          <button class="user-dropdown-btn" onclick="openBillingPanel()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+            Usage &amp; Billing
+          </button>
+        </div>
+        <div class="udrop-divider"></div>
+        <!-- Account section -->
+        <div class="udrop-section">Account</div>
+        <div class="user-dropdown-actions" style="padding-bottom:0">
+          <button class="user-dropdown-btn" onclick="openMyProfile()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            My Profile
+          </button>
+          <button class="user-dropdown-btn" onclick="openApiKeys()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
+            API Keys &amp; LLM Config
+          </button>
+          <button class="user-dropdown-btn" onclick="showKeyboardShortcuts()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M8 14h8"/></svg>
+            Keyboard Shortcuts
+            <span class="udrop-btn-kbd">?</span>
+          </button>
+        </div>
+        <div class="udrop-divider"></div>
+        <!-- Session actions -->
         <div class="user-dropdown-actions">
           <button class="user-dropdown-btn" onclick="switchToLogin()">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 16l4-4-4-4"/><path d="M21 12H9"/><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/></svg>
             Switch Account
           </button>
           <button class="user-dropdown-btn danger" onclick="doLogout()">
@@ -3350,35 +3459,191 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // ─── USER IDENTITY WIDGET ──────────────────────────────
 function initUserWidget() {
-  const email  = localStorage.getItem('xref_user_email') || 'Guest';
-  const role   = localStorage.getItem('xref_user_role')   || 'guest';
-  const tenant = localStorage.getItem('xref_user_tenant') || '';
-  const tname  = localStorage.getItem('xref_user_tenant_name') || tenant || 'Local';
-  const initial = email.charAt(0).toUpperCase();
+  const email   = localStorage.getItem('xref_user_email') || '';
+  const role    = localStorage.getItem('xref_user_role')  || 'guest';
+  const tenant  = localStorage.getItem('xref_user_tenant') || '';
+  const tname   = localStorage.getItem('xref_user_tenant_name') || tenant || 'Local';
+  const plan    = localStorage.getItem('xref_user_plan')  || 'standard';
+  const dname   = localStorage.getItem('xref_user_display_name') || '';
+  const isGuest = !email || email === 'guest@local';
 
-  // Sidebar chip
+  // Derived display values
+  const displayEmail  = isGuest ? 'Not signed in' : email;
+  const displayName   = isGuest ? 'Guest' : (dname || email.split('@')[0]);
+  const initial       = displayName.charAt(0).toUpperCase();
+  const workspaceLabel = isGuest ? '' : tname;
+
+  // ── Sidebar chip ──
   const sbAvatar = document.getElementById('sidebarAvatar');
   const sbEmail  = document.getElementById('sidebarEmail');
   const sbBadge  = document.getElementById('sidebarRoleBadge');
   const sbTenant = document.getElementById('sidebarTenant');
-  if (sbAvatar) sbAvatar.textContent = initial;
-  if (sbEmail)  sbEmail.textContent  = email;
-  if (sbBadge)  { sbBadge.textContent = role; sbBadge.className = 'user-role-badge role-' + role; }
-  if (sbTenant) sbTenant.textContent = tname;
+  if (sbAvatar) { sbAvatar.textContent = initial; }
+  if (sbEmail)  { sbEmail.textContent  = displayEmail; }
+  if (sbBadge)  { sbBadge.textContent  = isGuest ? 'guest' : role; sbBadge.className = 'user-role-badge role-' + (isGuest ? 'readonly' : role); }
+  if (sbTenant) { sbTenant.textContent = workspaceLabel; }
 
-  // Dropdown content
-  ['drop','topbarDrop'].forEach(prefix => {
-    const el1 = document.getElementById(prefix + 'Email');
-    const el2 = document.getElementById(prefix + 'Tenant');
-    if (el1) el1.textContent = email;
-    if (el2) el2.textContent = `${tname} · ${role}`;
-  });
+  // ── Sidebar dropdown profile card ──
+  const sbDA = document.getElementById('sbDropAvatar');
+  const sbDN = document.getElementById('sbDropName');
+  const sbDE = document.getElementById('sbDropEmail');
+  const sbDP = document.getElementById('sbDropPlan');
+  if (sbDA) sbDA.textContent = initial;
+  if (sbDN) sbDN.textContent = isGuest ? 'Guest User' : displayName;
+  if (sbDE) sbDE.textContent = displayEmail;
+  if (sbDP) { sbDP.textContent = plan; sbDP.className = 'udrop-plan plan-' + plan; }
 
-  // Topbar chip
+  // ── Topbar chip ──
   const tbAvatar = document.getElementById('topbarAvatar');
   const tbLabel  = document.getElementById('topbarUserLabel');
   if (tbAvatar) tbAvatar.textContent = initial;
-  if (tbLabel)  tbLabel.textContent  = email.split('@')[0];
+  if (tbLabel)  tbLabel.textContent  = isGuest ? 'Guest' : displayName;
+
+  // ── Topbar dropdown profile card ──
+  const tbDA = document.getElementById('tbDropAvatar');
+  const tbDN = document.getElementById('tbDropName');
+  const tbDE = document.getElementById('tbDropEmail');
+  const tbDP = document.getElementById('tbDropPlan');
+  if (tbDA) tbDA.textContent = initial;
+  if (tbDN) tbDN.textContent = isGuest ? 'Guest User' : (workspaceLabel ? `${displayName} · ${workspaceLabel}` : displayName);
+  if (tbDE) tbDE.textContent = displayEmail;
+  if (tbDP) { tbDP.textContent = plan; tbDP.className = 'udrop-plan plan-' + plan; }
+
+  // Optionally fetch fresh identity from API (non-blocking)
+  const token = localStorage.getItem('xref_auth_token');
+  if (token && !isGuest) {
+    fetch(API + '/api/auth/me', { headers: { Authorization: 'Bearer ' + token } })
+      .then(r => r.ok ? r.json() : null).then(d => {
+        if (!d) return;
+        if (d.email)        localStorage.setItem('xref_user_email', d.email);
+        if (d.role)         localStorage.setItem('xref_user_role',  d.role);
+        if (d.tenant)       localStorage.setItem('xref_user_tenant', d.tenant);
+        if (d.tenant_name)  localStorage.setItem('xref_user_tenant_name', d.tenant_name);
+        if (d.plan)         localStorage.setItem('xref_user_plan', d.plan);
+        if (d.display_name) localStorage.setItem('xref_user_display_name', d.display_name);
+        initUserWidget(); // re-render with fresh data
+      }).catch(() => {});
+  }
+}
+
+// ── Workspace config: opens Provider & Env tab ──────────
+function openWorkspaceConfig() {
+  document.querySelectorAll('.user-dropdown,.topbar-dropdown').forEach(d => d.classList.remove('open'));
+  showTab('settings');
+  setTimeout(() => {
+    const provTab = document.querySelector('[data-settings-tab="provider"]');
+    if (provTab) provTab.click();
+  }, 120);
+}
+
+// ── Team members: opens admin → users tab ───────────────
+function openTeamPanel() {
+  document.querySelectorAll('.user-dropdown,.topbar-dropdown').forEach(d => d.classList.remove('open'));
+  const role = localStorage.getItem('xref_user_role') || 'readonly';
+  if (!['admin','mapper'].includes(role)) { toast('Admin access required to manage team', 'warn'); return; }
+  showTab('admin');
+  setTimeout(() => {
+    const usersTab = document.querySelector('[data-admin-tab="users"]');
+    if (usersTab) usersTab.click();
+  }, 120);
+}
+
+// ── Billing/usage panel ──────────────────────────────────
+function openBillingPanel() {
+  document.querySelectorAll('.user-dropdown,.topbar-dropdown').forEach(d => d.classList.remove('open'));
+  showTab('finops');
+}
+
+// ── My Profile modal ─────────────────────────────────────
+function openMyProfile() {
+  document.querySelectorAll('.user-dropdown,.topbar-dropdown').forEach(d => d.classList.remove('open'));
+  const email   = localStorage.getItem('xref_user_email') || '—';
+  const dname   = localStorage.getItem('xref_user_display_name') || '';
+  const role    = localStorage.getItem('xref_user_role') || 'guest';
+  const tname   = localStorage.getItem('xref_user_tenant_name') || '—';
+  const plan    = localStorage.getItem('xref_user_plan') || 'standard';
+  const planCls = {enterprise:'#0fd4b0',trial:'#fb923c',standard:'#4d90ff'}[plan] || '#4d90ff';
+  showModal({
+    title: 'My Profile',
+    html: `
+      <div style="display:flex;gap:16px;align-items:flex-start;margin-bottom:18px">
+        <div style="width:56px;height:56px;border-radius:14px;background:linear-gradient(135deg,var(--cyan),#2955d4);
+          display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;color:#fff;flex-shrink:0">
+          ${email.charAt(0).toUpperCase()}
+        </div>
+        <div>
+          <div style="font-size:16px;font-weight:700;color:var(--text-1)">${dname || email.split('@')[0]}</div>
+          <div style="font-size:12px;color:var(--text-3);margin-top:2px">${email}</div>
+          <div style="margin-top:6px;display:flex;gap:8px;align-items:center">
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:2px 8px;border-radius:4px;background:rgba(77,144,255,.15);color:var(--cyan)">${role}</span>
+            <span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:2px 8px;border-radius:4px;background:rgba(0,0,0,.15);color:${planCls};border:1px solid ${planCls}44">${plan}</span>
+          </div>
+        </div>
+      </div>
+      <div style="background:var(--bg-3);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--text-2)">
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="color:var(--text-3)">Workspace</span><b style="color:var(--text-1)">${tname}</b></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--text-3)">Plan</span><b style="color:${planCls}">${plan}</b></div>
+      </div>
+      <p style="font-size:11px;color:var(--text-3);margin-top:12px;text-align:center">Profile editing available via workspace admin.</p>
+    `,
+    actions: [{ label:'Close', fn:'', primary:false }]
+  });
+}
+
+// ── API Keys: jump to provider settings ─────────────────
+function openApiKeys() {
+  document.querySelectorAll('.user-dropdown,.topbar-dropdown').forEach(d => d.classList.remove('open'));
+  openWorkspaceConfig();
+}
+
+// ── Keyboard shortcuts modal ─────────────────────────────
+function showKeyboardShortcuts() {
+  document.querySelectorAll('.user-dropdown,.topbar-dropdown').forEach(d => d.classList.remove('open'));
+  const shortcuts = [
+    ['N', 'New session'],
+    ['R', 'Run pipeline'],
+    ['E', 'Export mapping'],
+    ['1–6', 'Switch sidebar tabs'],
+    ['?', 'Show this dialog'],
+    ['Esc', 'Close panel / modal'],
+  ];
+  showModal({
+    title: 'Keyboard Shortcuts',
+    html: `<div style="display:grid;gap:6px">
+      ${shortcuts.map(([k,l]) => `
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:var(--bg-3);border-radius:6px">
+          <span style="font-size:12px;color:var(--text-2)">${l}</span>
+          <kbd style="font-size:11px;font-family:monospace;background:var(--bg-4);border:1px solid var(--border-2);border-radius:4px;padding:2px 8px;color:var(--text-1)">${k}</kbd>
+        </div>`).join('')}
+    </div>
+    <p style="font-size:11px;color:var(--text-3);margin-top:12px;text-align:center">Hold <kbd style="font-size:10px;font-family:monospace;padding:1px 5px;border-radius:3px;background:var(--bg-3);border:1px solid var(--border-2)">Ctrl</kbd> / <kbd style="font-size:10px;font-family:monospace;padding:1px 5px;border-radius:3px;background:var(--bg-3);border:1px solid var(--border-2)">⌘</kbd> to avoid browser conflicts.</p>`,
+    actions: [{ label:'Got it', fn:'', primary:true }]
+  });
+}
+
+// Generic modal helper (reuse if exists, otherwise build minimal one)
+function showModal({ title, html, actions = [] }) {
+  const existing = document.getElementById('_xrefGenericModal');
+  if (existing) existing.remove();
+  const overlay = document.createElement('div');
+  overlay.id = '_xrefGenericModal';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px';
+  overlay.innerHTML = `
+    <div style="background:var(--bg-2);border:1px solid var(--border-2);border-radius:14px;padding:24px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.7)">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+        <h3 style="font-size:14px;font-weight:700;color:var(--text-1)">${title}</h3>
+        <button onclick="document.getElementById('_xrefGenericModal').remove()"
+          style="background:none;border:none;color:var(--text-3);cursor:pointer;font-size:20px;line-height:1;padding:0 2px">&times;</button>
+      </div>
+      <div>${html}</div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">
+        ${actions.map(a => `<button onclick="document.getElementById('_xrefGenericModal').remove();${a.fn}"
+          style="padding:7px 18px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid ${a.primary ? 'transparent' : 'var(--border-2)'};
+          background:${a.primary ? 'var(--cyan)' : 'var(--bg-3)'};color:${a.primary ? '#000' : 'var(--text-1)'}">${a.label}</button>`).join('')}
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
 }
 
 function toggleUserDropdown(source) {
@@ -3444,7 +3709,17 @@ function toggleSidebar() {
   else openSidebar();
 }
 // Close sidebar on swipe-left or Escape key
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSidebar(); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    closeSidebar();
+    document.querySelectorAll('.user-dropdown,.topbar-dropdown').forEach(d => d.classList.remove('open'));
+    const gm = document.getElementById('_xrefGenericModal');
+    if (gm) gm.remove();
+  }
+  if (e.key === '?' && !e.target.matches('input,textarea,select,[contenteditable]')) {
+    showKeyboardShortcuts();
+  }
+});
 
 // ─── NAV ───────────────────────────────────────────────
 function switchView(name, el) {
