@@ -15,9 +15,13 @@ if ! python3 -c "import fastapi" 2>/dev/null; then
   pip3 install -r requirements.txt --break-system-packages -q
 fi
 
-echo "→ Loading .env from ../sql gen/.env"
 echo "→ Starting server on http://localhost:7788"
 echo "→ Open http://localhost:7788 in your browser"
 echo ""
 
-python3 server.py
+# Use the modular app package (app/main.py) if present, fall back to legacy server.py
+if [ -f "app/main.py" ]; then
+  python3 -m uvicorn app.main:app --host 0.0.0.0 --port 7788 --reload
+else
+  python3 server.py
+fi

@@ -813,7 +813,7 @@ async function doLogin() {
 }
 
 function redirectToApp(tenant, email) {
-  const next = new URLSearchParams(location.search).get('next') || 'index.html';
+  const next = new URLSearchParams(location.search).get('next') || '/';
   window.location.href = `${next}?tenant=${encodeURIComponent(tenant)}&user=${encodeURIComponent(email)}`;
 }
 

@@ -258,6 +258,11 @@ if (_STATIC / "index.html").exists():
     async def root():
         return FileResponse(_STATIC / "index.html")
 
+    # Alias so login.html redirect to 'index.html' also works
+    @app.get("/index.html", include_in_schema=False)
+    async def root_alias():
+        return FileResponse(_STATIC / "index.html")
+
 if (_STATIC / "login.html").exists():
     @app.get("/login", include_in_schema=False)
     async def login_page():
