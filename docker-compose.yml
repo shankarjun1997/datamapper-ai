@@ -1,0 +1,95 @@
+version: "3.9"
+
+services:
+  # ── xREF DataMapper API ──────────────────────────────────────────────────
+  datamapper:
+    build: .
+    container_name: xref-datamapper
+    ports:
+      - "7788:7788"
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql+psycopg2://xref:xref@postgres:5432/xref
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./runtime:/app/runtime
+      - ./audits:/app/audits
+      - ./frontend:/app/frontend:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7788/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ── Celery Worker ────────────────────────────────────────────────────────
+  celery_worker:
+    build: .
+    container_name: xref-celery
+    command: celery -A app.worker worker --loglevel=info --concurrency=2 -Q xref_pipeline
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql+psycopg2://xref:xref@postgres:5432/xref
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./runtime:/app/runtime
+    depends_on:
+      - redis
+      - postgres
+    restart: unless-stopped
+
+  # ── Postgres ─────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: xref-postgres
+    environment:
+      POSTGRES_DB: xref
+      POSTGRES_USER: xref
+      POSTGRES_PASSWORD: xref
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U xref"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── Redis ────────────────────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: xref-redis
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ── Demo Postgres source (for testing connectors) ─────────────────────
+  postgres-demo:
+    image: postgres:16-alpine
+    container_name: xref-postgres-demo
+    profiles: ["demo"]
+    environment:
+      POSTGRES_DB: demo_source
+      POSTGRES_USER: demo
+      POSTGRES_PASSWORD: demo
+    ports:
+      - "5433:5432"
+
+volumes:
+  pgdata:
