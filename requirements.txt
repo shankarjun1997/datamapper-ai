@@ -1,38 +1,52 @@
-# DataMapper — Agentic STM Engine
-# Install: pip install -r requirements.txt --break-system-packages
+# xREF DataMapper — Python dependencies
+# Install:  pip install -r requirements.txt
+# Docker:   already handled in Dockerfile (no --break-system-packages needed)
 
-# Web framework
+# ── Web framework ─────────────────────────────────────────────────────────────
 fastapi>=0.111.0
 uvicorn[standard]>=0.30.0
 python-multipart>=0.0.9
 
-# LLM providers
+# ── LLM providers ─────────────────────────────────────────────────────────────
 anthropic>=0.28.0
-openai>=1.30.0
+openai>=1.30.0          # covers DeepSeek and any OpenAI-compatible endpoint
 
-# Config
+# ── Config & environment ──────────────────────────────────────────────────────
 python-dotenv>=1.0.0
 
-# Schema parsing
-openpyxl>=3.1.0
+# ── Schema parsing ────────────────────────────────────────────────────────────
+openpyxl>=3.1.0         # Excel (.xlsx) source upload + STM export
 
-# BigQuery
+# ── BigQuery (target connector) ───────────────────────────────────────────────
 google-cloud-bigquery>=3.19.0
 google-auth>=2.29.0
 
-# Fuzzy matching for confidence scoring
-rapidfuzz>=3.6.0
-
-# Pydantic
-pydantic>=2.7.0
-
-# HTTP client (for Jira API)
+# ── HTTP client (Jira integration) ────────────────────────────────────────────
 httpx>=0.27.0
 
-# Source DB connectors (install per dialect as needed)
+# ── Confidence scoring ────────────────────────────────────────────────────────
+rapidfuzz>=3.6.0        # fuzzy name matching for column similarity
+
+# ── Data validation ───────────────────────────────────────────────────────────
+pydantic>=2.7.0
+
+# ── Source DB connectors ──────────────────────────────────────────────────────
 sqlalchemy>=2.0.0
-psycopg2-binary>=2.9.0
-pymysql>=1.1.0
-# snowflake-connector-python>=3.0.0  # uncomment for Snowflake
-# databricks-sql-connector>=3.0.0    # uncomment for Databricks
-# cx_Oracle>=8.0.0                   # uncomment for Oracle (or: oracledb>=1.0.0)
+psycopg2-binary>=2.9.0  # PostgreSQL
+pymysql>=1.1.0          # MySQL / MariaDB
+
+# ── Cache / queue / pub-sub ───────────────────────────────────────────────────
+redis>=5.0.0            # Redis client (rate limiting, job queue, pub-sub)
+celery[redis]>=5.3      # async job queue for long-running pipeline runs
+kombu>=5.3              # messaging library used by Celery (pinned for compat)
+
+# ── Platform persistence (sessions / audit / mapping memory) ──────────────────
+alembic>=1.13.0
+asyncpg>=0.29.0         # async postgres driver (optional, reserved for future)
+
+# Optional source connectors — install as needed:
+# oracledb>=1.4                     # Oracle
+# pyodbc>=4.0                       # MSSQL / SQL Server
+# snowflake-connector-python>=3.0   # Snowflake
+# databricks-sql-connector>=3.0.0   # Databricks
+

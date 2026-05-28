@@ -56,3 +56,6 @@ outputs/
 # ── Logs ───────────────────────────────────────────────────
 *.log
 logs/
+runtime/
+audits/
+*.jsonl
