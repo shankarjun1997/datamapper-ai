@@ -1712,9 +1712,12 @@ select.cell-edit{
         <div class="udrop-profile">
           <div class="udrop-avatar-lg" id="sbDropAvatar">?</div>
           <div style="flex:1;min-width:0">
-            <div class="udrop-name" id="sbDropName">—</div>
-            <div class="udrop-email" id="sbDropEmail">—</div>
-            <span class="udrop-plan plan-standard" id="sbDropPlan">standard</span>
+            <div class="udrop-name" id="sbDropName">Loading…</div>
+            <div class="udrop-email" id="sbDropEmail" style="margin-bottom:3px">—</div>
+            <div style="display:flex;align-items:center;gap:5px;margin-top:2px">
+              <span class="udrop-plan plan-standard" id="sbDropPlan">standard</span>
+              <span style="font-size:9px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:110px" id="sbDropWorkspace"></span>
+            </div>
           </div>
         </div>
         <!-- Workspace section -->
@@ -1828,9 +1831,12 @@ select.cell-edit{
         <div class="udrop-profile">
           <div class="udrop-avatar-lg" id="tbDropAvatar">?</div>
           <div style="flex:1;min-width:0">
-            <div class="udrop-name" id="tbDropName">—</div>
-            <div class="udrop-email" id="tbDropEmail">—</div>
-            <span class="udrop-plan plan-standard" id="tbDropPlan">standard</span>
+            <div class="udrop-name" id="tbDropName">Loading…</div>
+            <div class="udrop-email" id="tbDropEmail" style="margin-bottom:3px">—</div>
+            <div style="display:flex;align-items:center;gap:5px;margin-top:2px">
+              <span class="udrop-plan plan-standard" id="tbDropPlan">standard</span>
+              <span style="font-size:9px;color:var(--text-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:130px" id="tbDropWorkspace"></span>
+            </div>
           </div>
         </div>
         <!-- Workspace section -->
@@ -3403,6 +3409,9 @@ async function checkBackend() {
 
 // ─── INIT ──────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
+  // Render user widget immediately from whatever's in localStorage (fast, sync)
+  initUserWidget();
+
   // Auth gate — check server config first, then decide whether login is mandatory
   const _tok = localStorage.getItem('xref_auth_token');
   if (!_tok) {
@@ -3419,25 +3428,30 @@ document.addEventListener('DOMContentLoaded', async () => {
         body: JSON.stringify({ tenant: _cfg.demo_tenant || 'demo', email: _cfg.demo_email || 'demo@xref.ai', password: 'demo', remember: true }),
       }).then(r => r.json()).catch(() => null);
       if (_loginR && _loginR.token) {
-        localStorage.setItem('xref_auth_token', _loginR.token);
-        localStorage.setItem('xref_user_email', _loginR.email || _cfg.demo_email || 'demo@xref.ai');
-        localStorage.setItem('xref_user_role', _loginR.role || 'admin');
-        localStorage.setItem('xref_user_tenant', _loginR.tenant || 'demo');
-        localStorage.setItem('xref_user_tenant_name', _loginR.tenant_name || _loginR.tenant || 'Demo');
+        localStorage.setItem('xref_auth_token',       _loginR.token);
+        localStorage.setItem('xref_user_email',        _loginR.email        || _cfg.demo_email    || 'demo@xref.ai');
+        localStorage.setItem('xref_user_role',         _loginR.role         || 'admin');
+        localStorage.setItem('xref_user_tenant',       _loginR.tenant       || _cfg.demo_tenant   || 'demo');
+        localStorage.setItem('xref_user_tenant_name',  _loginR.tenant_name  || _loginR.tenant     || 'Demo Workspace');
+        localStorage.setItem('xref_user_plan',         _loginR.plan         || 'standard');
+        localStorage.setItem('xref_user_display_name', _loginR.display_name || '');
+        // Re-render widget now that we have real identity data
+        initUserWidget();
       }
     } catch (_e) {
-      // Server not running — proceed anyway, apiFetch will show "Backend not reachable"
+      // Server not running — proceed anyway
     }
   }
 
-  // Check backend first — show status before any other API calls
-  const up = await checkBackend();
-  if (!up) {
-    toast('Backend not running — open Terminal and run: bash demo.sh', 'error');
-  }
+  // Check backend — show status
+  try {
+    const up = await checkBackend();
+    if (!up) toast('Backend not running — open Terminal and run: bash demo.sh', 'error');
+  } catch {}
 
-  await loadProviderCatalog();
-  await loadSessions();
+  try { await loadProviderCatalog(); } catch {}
+  try { await loadSessions(); } catch {}
+
   // Init structured DB credential fields on page load
   renderDbCredFields('postgres');
 
@@ -3452,74 +3466,79 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Re-check backend every 30s so status dot stays live
   setInterval(checkBackend, 30000);
-
-  // Populate user identity widget
-  initUserWidget();
 });
 
 // ─── USER IDENTITY WIDGET ──────────────────────────────
 function initUserWidget() {
   const email   = localStorage.getItem('xref_user_email') || '';
-  const role    = localStorage.getItem('xref_user_role')  || 'guest';
+  const role    = localStorage.getItem('xref_user_role')  || 'readonly';
   const tenant  = localStorage.getItem('xref_user_tenant') || '';
-  const tname   = localStorage.getItem('xref_user_tenant_name') || tenant || 'Local';
+  const tname   = localStorage.getItem('xref_user_tenant_name') || tenant || '';
   const plan    = localStorage.getItem('xref_user_plan')  || 'standard';
   const dname   = localStorage.getItem('xref_user_display_name') || '';
   const isGuest = !email || email === 'guest@local';
 
   // Derived display values
-  const displayEmail  = isGuest ? 'Not signed in' : email;
-  const displayName   = isGuest ? 'Guest' : (dname || email.split('@')[0]);
-  const initial       = displayName.charAt(0).toUpperCase();
-  const workspaceLabel = isGuest ? '' : tname;
+  const displayEmail   = isGuest ? 'Click to sign in' : email;
+  const displayName    = isGuest ? 'Guest' : (dname || email.split('@')[0]);
+  const workspaceName  = tname || (isGuest ? 'xREF Demo' : tenant || 'Workspace');
+  const initial        = isGuest ? '?' : displayName.charAt(0).toUpperCase();
+
+  // ── Helper: set element safely ──
+  const $set = (id, val) => { const el = document.getElementById(id); if (el) el.textContent = val; };
+  const $cls = (id, cls) => { const el = document.getElementById(id); if (el) el.className = cls; };
 
   // ── Sidebar chip ──
-  const sbAvatar = document.getElementById('sidebarAvatar');
-  const sbEmail  = document.getElementById('sidebarEmail');
-  const sbBadge  = document.getElementById('sidebarRoleBadge');
-  const sbTenant = document.getElementById('sidebarTenant');
-  if (sbAvatar) { sbAvatar.textContent = initial; }
-  if (sbEmail)  { sbEmail.textContent  = displayEmail; }
-  if (sbBadge)  { sbBadge.textContent  = isGuest ? 'guest' : role; sbBadge.className = 'user-role-badge role-' + (isGuest ? 'readonly' : role); }
-  if (sbTenant) { sbTenant.textContent = workspaceLabel; }
+  $set('sidebarAvatar', initial);
+  $set('sidebarEmail',  displayEmail);
+  $set('sidebarTenant', workspaceName);
+  const sbBadge = document.getElementById('sidebarRoleBadge');
+  if (sbBadge) {
+    sbBadge.textContent = isGuest ? 'guest' : role;
+    sbBadge.className   = 'user-role-badge role-' + (isGuest ? 'readonly' : role);
+  }
 
   // ── Sidebar dropdown profile card ──
-  const sbDA = document.getElementById('sbDropAvatar');
-  const sbDN = document.getElementById('sbDropName');
-  const sbDE = document.getElementById('sbDropEmail');
+  $set('sbDropAvatar', initial);
+  $set('sbDropName',   isGuest ? 'Guest User' : displayName);
+  $set('sbDropEmail',  isGuest ? 'Not signed in' : email);
   const sbDP = document.getElementById('sbDropPlan');
-  if (sbDA) sbDA.textContent = initial;
-  if (sbDN) sbDN.textContent = isGuest ? 'Guest User' : displayName;
-  if (sbDE) sbDE.textContent = displayEmail;
-  if (sbDP) { sbDP.textContent = plan; sbDP.className = 'udrop-plan plan-' + plan; }
+  if (sbDP) { sbDP.textContent = isGuest ? 'free' : plan; sbDP.className = 'udrop-plan plan-' + (isGuest ? 'standard' : plan); }
+
+  // ── Workspace title row (visible for ALL users) ──
+  // Show workspace name below profile name in both dropdowns
+  ['sbDropWorkspace','tbDropWorkspace'].forEach(id => $set(id, workspaceName));
 
   // ── Topbar chip ──
-  const tbAvatar = document.getElementById('topbarAvatar');
-  const tbLabel  = document.getElementById('topbarUserLabel');
-  if (tbAvatar) tbAvatar.textContent = initial;
-  if (tbLabel)  tbLabel.textContent  = isGuest ? 'Guest' : displayName;
+  $set('topbarAvatar',    initial);
+  $set('topbarUserLabel', isGuest ? 'Guest' : displayName);
 
   // ── Topbar dropdown profile card ──
-  const tbDA = document.getElementById('tbDropAvatar');
-  const tbDN = document.getElementById('tbDropName');
-  const tbDE = document.getElementById('tbDropEmail');
+  $set('tbDropAvatar', initial);
+  $set('tbDropName',   isGuest ? 'Guest User' : displayName);
+  $set('tbDropEmail',  isGuest ? 'Not signed in' : email);
   const tbDP = document.getElementById('tbDropPlan');
-  if (tbDA) tbDA.textContent = initial;
-  if (tbDN) tbDN.textContent = isGuest ? 'Guest User' : (workspaceLabel ? `${displayName} · ${workspaceLabel}` : displayName);
-  if (tbDE) tbDE.textContent = displayEmail;
-  if (tbDP) { tbDP.textContent = plan; tbDP.className = 'udrop-plan plan-' + plan; }
+  if (tbDP) { tbDP.textContent = isGuest ? 'free' : plan; tbDP.className = 'udrop-plan plan-' + (isGuest ? 'standard' : plan); }
 
-  // Optionally fetch fresh identity from API (non-blocking)
+  // ── Fetch fresh identity from API (non-blocking, only if logged in) ──
   const token = localStorage.getItem('xref_auth_token');
-  if (token && !isGuest) {
+  if (token) {
     fetch(API + '/api/auth/me', { headers: { Authorization: 'Bearer ' + token } })
-      .then(r => r.ok ? r.json() : null).then(d => {
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
         if (!d) return;
-        if (d.email)        localStorage.setItem('xref_user_email', d.email);
-        if (d.role)         localStorage.setItem('xref_user_role',  d.role);
-        if (d.tenant)       localStorage.setItem('xref_user_tenant', d.tenant);
-        if (d.tenant_name)  localStorage.setItem('xref_user_tenant_name', d.tenant_name);
-        if (d.plan)         localStorage.setItem('xref_user_plan', d.plan);
+        const changed =
+          (d.email        && d.email        !== localStorage.getItem('xref_user_email'))       ||
+          (d.role         && d.role         !== localStorage.getItem('xref_user_role'))        ||
+          (d.tenant_name  && d.tenant_name  !== localStorage.getItem('xref_user_tenant_name')) ||
+          (d.plan         && d.plan         !== localStorage.getItem('xref_user_plan'))        ||
+          (d.display_name && d.display_name !== localStorage.getItem('xref_user_display_name'));
+        if (!changed) return;
+        if (d.email)        localStorage.setItem('xref_user_email',        d.email);
+        if (d.role)         localStorage.setItem('xref_user_role',         d.role);
+        if (d.tenant)       localStorage.setItem('xref_user_tenant',       d.tenant);
+        if (d.tenant_name)  localStorage.setItem('xref_user_tenant_name',  d.tenant_name);
+        if (d.plan)         localStorage.setItem('xref_user_plan',         d.plan);
         if (d.display_name) localStorage.setItem('xref_user_display_name', d.display_name);
         initUserWidget(); // re-render with fresh data
       }).catch(() => {});
@@ -3651,9 +3670,11 @@ function toggleUserDropdown(source) {
   const drop   = document.getElementById(dropId);
   if (!drop) return;
   const isOpen = drop.classList.contains('open');
-  // Close all dropdowns first
   document.querySelectorAll('.user-dropdown, .topbar-dropdown').forEach(d => d.classList.remove('open'));
-  if (!isOpen) drop.classList.add('open');
+  if (!isOpen) {
+    initUserWidget(); // always refresh identity before showing
+    drop.classList.add('open');
+  }
 }
 
 // Close dropdowns when clicking outside
