@@ -1,930 +1,539 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>xREF Agent — Sign In</title>
-<!-- Infinite logo favicon -->
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='20%25' y1='0%25' x2='80%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%234d90ff'/%3E%3Cstop offset='50%25' stop-color='%232955d4'/%3E%3Cstop offset='100%25' stop-color='%231a34a8'/%3E%3C/linearGradient%3E%3CclipPath id='c'%3E%3Cpolygon points='50,8 92,88 8,88'/%3E%3C/clipPath%3E%3C/defs%3E%3Cpolygon points='50,8 92,88 8,88' fill='url(%23g)'/%3E%3Cg clip-path='url(%23c)' opacity='0.95'%3E%3Cline x1='22' y1='95' x2='58' y2='5' stroke='%230fd4b0' stroke-width='5.5' stroke-linecap='round'/%3E%3Cline x1='34' y1='95' x2='70' y2='5' stroke='%230fd4b0' stroke-width='5.5' stroke-linecap='round'/%3E%3Cline x1='46' y1='95' x2='82' y2='5' stroke='%230fd4b0' stroke-width='5.5' stroke-linecap='round'/%3E%3Cline x1='58' y1='95' x2='94' y2='5' stroke='%230fd4b0' stroke-width='5.5' stroke-linecap='round'/%3E%3C/g%3E%3Cellipse cx='50' cy='52' rx='46' ry='22' fill='none' stroke='%230fd4b0' stroke-width='3.5' opacity='0.9' transform='rotate(-18 50 52)'/%3E%3C/svg%3E">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700;800&display=swap" rel="stylesheet">
 <style>
-/* ── Reset ── */
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;font-family:'Inter','Segoe UI',system-ui,sans-serif}
 :root{
-  --sans:'Inter','Segoe UI',system-ui,sans-serif;
-  --mono:'JetBrains Mono','Fira Code',monospace;
-
-  /* Brand */
-  --brand-blue:#2955d4;
-  --brand-blue-lt:#4d90ff;
-  --brand-teal:#0fd4b0;
-  --brand-navy:#0d1525;
-
-  /* Dark theme tokens */
-  --bg-page:#060e1e;
-  --bg-panel:#0d1525;
-  --bg-card:#111d34;
-  --bg-input:#0c1630;
-  --bg-hover:#162040;
-
-  --border:#1e3068;
-  --border-focus:#4d90ff;
-
-  --text-1:#e8edf8;
-  --text-2:#a9b8d8;
-  --text-3:#5a72a0;
-  --text-label:#8ba4cc;
-
-  --cyan:#4d90ff;
-  --teal:#0fd4b0;
-  --green:#4ade80;
-  --red:#f87171;
-  --orange:#fb923c;
-
-  --shadow-card:0 24px 60px rgba(0,0,0,.5);
-  --shadow-btn:0 0 20px rgba(77,144,255,.3);
-  --radius:12px;
-  --radius-sm:8px;
+  --navy:#06101e;--navy-2:#0b1a2e;--navy-3:#0f2242;--navy-4:#152d55;
+  --blue:#2955d4;--blue-lt:#4d90ff;--teal:#0fd4b0;--teal-dk:#09a08a;
+  --white:#f0f4ff;--muted:#8faad4;--dim:#4a6890;
+  --border:rgba(77,144,255,.18);--border-focus:rgba(15,212,176,.6);
+  --err:#f87171;--ok:#4ade80;--radius:14px;--radius-sm:9px;
+  --shadow:0 24px 60px rgba(0,0,0,.55);
 }
+body{background:var(--navy);display:grid;grid-template-columns:1fr 1fr;min-height:100vh;overflow:hidden}
+@media(max-width:800px){body{grid-template-columns:1fr}#brandPanel{display:none}}
 
-html,body{height:100%;font-family:var(--sans);background:var(--bg-page);color:var(--text-1)}
-
-/* ── Layout ── */
-.login-wrap{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  min-height:100vh;
+/* BRAND PANEL */
+#brandPanel{
+  position:relative;overflow:hidden;
+  background:linear-gradient(160deg,var(--navy-3) 0%,var(--navy-4) 60%,#0a1f40 100%);
+  display:flex;flex-direction:column;justify-content:space-between;padding:52px 48px;
 }
-@media(max-width:860px){
-  .login-wrap{grid-template-columns:1fr}
-  .login-left{display:none}
+#brandPanel::before{
+  content:'';position:absolute;inset:0;
+  background-image:linear-gradient(rgba(77,144,255,.07) 1px,transparent 1px),linear-gradient(90deg,rgba(77,144,255,.07) 1px,transparent 1px);
+  background-size:48px 48px;animation:gridScroll 20s linear infinite;
 }
-
-/* ══ LEFT PANEL — Brand ══════════════════════════════════════════════════ */
-.login-left{
-  background:var(--brand-navy);
-  position:relative;
-  overflow:hidden;
-  display:flex;
-  flex-direction:column;
-  justify-content:space-between;
-  padding:48px 52px;
+@keyframes gridScroll{from{background-position:0 0}to{background-position:48px 48px}}
+#brandPanel::after{
+  content:'';position:absolute;width:500px;height:500px;border-radius:50%;
+  background:radial-gradient(circle,rgba(15,212,176,.12) 0%,transparent 70%);
+  top:-100px;right:-100px;pointer-events:none;
 }
+.brand-logo{position:relative;display:flex;align-items:center;gap:14px;z-index:1}
+.brand-mark svg{width:44px;height:44px}
+.brand-name{font-family:'Poppins',Arial,sans-serif;font-size:22px;font-weight:800;color:var(--white);letter-spacing:-.02em}
+.brand-name span{color:var(--teal)}
+.brand-body{position:relative;z-index:1}
+.brand-headline{font-family:'Poppins',Arial,sans-serif;font-size:38px;font-weight:800;line-height:1.12;color:var(--white);letter-spacing:-.03em;margin-bottom:20px}
+.brand-headline em{font-style:normal;background:linear-gradient(90deg,var(--teal),var(--blue-lt));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.brand-sub{font-size:15px;color:var(--muted);line-height:1.65;max-width:340px}
+.feature-list{display:flex;flex-direction:column;gap:12px;margin-top:36px}
+.feature-item{display:flex;align-items:flex-start;gap:12px}
+.feature-icon{width:32px;height:32px;border-radius:8px;flex-shrink:0;display:flex;align-items:center;justify-content:center;background:rgba(15,212,176,.12);border:1px solid rgba(15,212,176,.2)}
+.feature-icon svg{width:15px;height:15px;color:var(--teal)}
+.feature-text{font-size:13px;color:var(--muted);line-height:1.5;padding-top:2px}
+.feature-text strong{color:var(--white);display:block;font-size:13px;margin-bottom:1px}
+.brand-footer{position:relative;z-index:1;font-size:11px;color:var(--dim)}
 
-/* Animated grid background */
-.login-left::before{
-  content:'';
-  position:absolute;
-  inset:0;
-  background-image:
-    linear-gradient(rgba(77,144,255,.06) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(77,144,255,.06) 1px, transparent 1px);
-  background-size:48px 48px;
-  animation:grid-drift 20s linear infinite;
-}
-@keyframes grid-drift{
-  0%{transform:translate(0,0)}
-  100%{transform:translate(48px,48px)}
-}
-
-/* Glow blobs */
-.login-left::after{
-  content:'';
-  position:absolute;
-  width:500px;height:500px;
-  background:radial-gradient(circle, rgba(15,212,176,.12) 0%, transparent 70%);
-  top:-100px;right:-100px;
-  pointer-events:none;
-}
-.glow-2{
-  position:absolute;
-  width:400px;height:400px;
-  background:radial-gradient(circle, rgba(41,85,212,.18) 0%, transparent 70%);
-  bottom:-80px;left:-60px;
-  pointer-events:none;
-}
-
-.left-content{position:relative;z-index:2}
-.left-footer{position:relative;z-index:2}
-
-/* Brand mark */
-.brand-mark{display:flex;align-items:center;gap:14px;margin-bottom:60px}
-.brand-mark svg{filter:drop-shadow(0 0 12px rgba(15,212,176,.4))}
-.brand-name{font-size:22px;font-weight:700;color:#fff;letter-spacing:-.02em}
-.brand-sub{font-size:12px;color:var(--teal);letter-spacing:.06em;text-transform:uppercase;margin-top:2px}
-
-/* Hero text */
-.hero-headline{
-  font-size:38px;font-weight:800;line-height:1.15;
-  color:#fff;margin-bottom:20px;letter-spacing:-.03em;
-}
-.hero-headline span{
-  background:linear-gradient(90deg,#4d90ff,#0fd4b0);
-  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
-}
-.hero-sub{font-size:15px;color:var(--text-2);line-height:1.7;max-width:380px;margin-bottom:48px}
-
-/* Feature list */
-.feature-list{display:flex;flex-direction:column;gap:18px}
-.feature-item{display:flex;align-items:flex-start;gap:14px}
-.feature-icon{
-  width:38px;height:38px;border-radius:10px;flex-shrink:0;
-  display:flex;align-items:center;justify-content:center;
-  font-size:17px;
-}
-.feature-icon.blue{background:rgba(77,144,255,.15);border:1px solid rgba(77,144,255,.25)}
-.feature-icon.teal{background:rgba(15,212,176,.12);border:1px solid rgba(15,212,176,.22)}
-.feature-icon.purple{background:rgba(167,139,250,.12);border:1px solid rgba(167,139,250,.22)}
-.feature-body{padding-top:2px}
-.feature-title{font-size:13px;font-weight:600;color:var(--text-1);margin-bottom:3px}
-.feature-desc{font-size:12px;color:var(--text-3);line-height:1.5}
-
-/* Tenant pills */
-.tenant-badges{display:flex;gap:8px;flex-wrap:wrap}
-.tenant-badge{
-  padding:5px 12px;border-radius:20px;font-size:11px;font-weight:600;
-  background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);
-  color:var(--text-2);letter-spacing:.02em;
-}
-.tenant-badge.active{background:rgba(15,212,176,.12);border-color:rgba(15,212,176,.3);color:var(--teal)}
-
-.left-footer-text{font-size:11px;color:var(--text-3);margin-top:16px}
-
-/* ══ RIGHT PANEL — Form ══════════════════════════════════════════════════ */
-.login-right{
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  background:var(--bg-page);
-  padding:48px 32px;
-}
-
+/* LOGIN PANEL */
+#loginPanel{background:var(--navy-2);display:flex;align-items:center;justify-content:center;padding:40px 32px;overflow-y:auto}
 .login-card{width:100%;max-width:420px}
 
-/* Mobile brand (hidden on desktop) */
-.mobile-brand{display:none;align-items:center;gap:12px;margin-bottom:36px}
-@media(max-width:860px){.mobile-brand{display:flex}}
+.card-logo{display:flex;align-items:center;gap:10px;margin-bottom:36px}
+.card-logo-mark svg{width:32px;height:32px}
+.card-logo-name{font-family:'Poppins',Arial,sans-serif;font-size:16px;font-weight:700;color:var(--white)}
+.card-logo-name span{color:var(--teal)}
+.card-title{font-family:'Poppins',Arial,sans-serif;font-size:26px;font-weight:700;color:var(--white);letter-spacing:-.02em;margin-bottom:6px}
+.card-subtitle{font-size:14px;color:var(--muted);margin-bottom:32px;line-height:1.5}
 
-/* Step indicator */
-.steps{display:flex;align-items:center;gap:8px;margin-bottom:36px}
-.step-dot{
-  width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;
-  font-size:11px;font-weight:700;transition:all .25s;
-}
-.step-dot.done{background:var(--teal);color:#0d1525}
-.step-dot.active{background:var(--cyan);color:#fff;box-shadow:0 0 12px rgba(77,144,255,.4)}
-.step-dot.pending{background:var(--bg-card);border:1px solid var(--border);color:var(--text-3)}
-.step-line{flex:1;height:1px;background:var(--border);transition:background .3s}
+/* Steps */
+.steps{display:flex;align-items:center;gap:0;margin-bottom:30px}
+.step-dot{width:28px;height:28px;border-radius:50%;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:var(--dim);transition:all .25s;flex-shrink:0}
+.step-dot.active{border-color:var(--teal);color:var(--teal);background:rgba(15,212,176,.08)}
+.step-dot.done{border-color:var(--teal);background:var(--teal);color:#000}
+.step-line{flex:1;height:2px;background:var(--border);transition:background .25s}
 .step-line.done{background:var(--teal)}
-.step-label{font-size:10px;color:var(--text-3);margin-top:4px;text-align:center;white-space:nowrap}
-
-.steps-row{display:grid;grid-template-columns:28px 1fr 28px 1fr 28px;align-items:center;gap:0;margin-bottom:8px}
-.steps-labels{display:grid;grid-template-columns:1fr 1fr 1fr;text-align:center;margin-bottom:32px}
-.steps-labels span{font-size:10px;color:var(--text-3)}
-.steps-labels span.active-lbl{color:var(--cyan);font-weight:600}
-
-/* Headings */
-.card-eyebrow{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--teal);margin-bottom:8px}
-.card-title{font-size:26px;font-weight:800;color:var(--text-1);letter-spacing:-.02em;margin-bottom:6px}
-.card-subtitle{font-size:14px;color:var(--text-2);margin-bottom:32px;line-height:1.5}
-
-/* Tenant display badge */
-.tenant-display{
-  display:flex;align-items:center;gap:10px;
-  padding:10px 14px;border-radius:var(--radius-sm);
-  background:rgba(15,212,176,.07);border:1px solid rgba(15,212,176,.2);
-  margin-bottom:24px;font-size:13px;
-}
-.tenant-display-icon{font-size:18px}
-.tenant-display-name{font-weight:600;color:var(--teal)}
-.tenant-display-plan{font-size:11px;color:var(--text-3);margin-left:auto;
-  padding:2px 8px;border-radius:10px;background:rgba(15,212,176,.1);color:var(--teal)}
-.tenant-display-change{
-  font-size:11px;color:var(--text-3);cursor:pointer;text-decoration:underline;
-  margin-left:10px;background:none;border:none;color:var(--cyan);cursor:pointer;
-}
-.tenant-display-change:hover{color:var(--text-1)}
 
 /* Fields */
-.field{margin-bottom:18px}
-.field-label{display:block;font-size:12px;font-weight:600;color:var(--text-label);margin-bottom:6px;letter-spacing:.02em}
-.field-input-wrap{position:relative}
-.field-input{
-  width:100%;padding:12px 14px;
-  background:var(--bg-input);border:1px solid var(--border);
-  border-radius:var(--radius-sm);color:var(--text-1);
-  font-family:var(--sans);font-size:14px;
-  outline:none;transition:border-color .2s,box-shadow .2s;
-}
-.field-input:focus{border-color:var(--border-focus);box-shadow:0 0 0 3px rgba(77,144,255,.12)}
-.field-input::placeholder{color:var(--text-3)}
-.field-input.error{border-color:var(--red);box-shadow:0 0 0 3px rgba(248,113,113,.1)}
-.field-input.valid{border-color:rgba(15,212,176,.4)}
+.field{margin-bottom:16px}
+.field label{display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:600;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:7px}
+.field input{width:100%;padding:11px 14px;background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--white);font-size:14px;font-family:inherit;outline:none;transition:border-color .2s,background .2s}
+.field input:focus{border-color:var(--border-focus);background:rgba(15,212,176,.04)}
+.field input::placeholder{color:var(--dim)}
+.field input.err-input{border-color:var(--err)}
+.field-err{font-size:11px;color:var(--err);margin-top:5px;display:none}
+.field-err.show{display:block}
 
-/* Prefix badge for tenant */
-.input-prefix{
-  position:absolute;left:12px;top:50%;transform:translateY(-50%);
-  font-size:13px;color:var(--text-3);pointer-events:none;user-select:none;
-  font-family:var(--mono);
-}
-.has-prefix{padding-left:80px}
+/* Password */
+.pwd-wrap{position:relative}
+.pwd-wrap input{padding-right:42px}
+.pwd-toggle{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--dim);padding:4px;transition:color .15s;line-height:0}
+.pwd-toggle:hover{color:var(--muted)}
 
-/* Password toggle */
-.pwd-toggle{
-  position:absolute;right:12px;top:50%;transform:translateY(-50%);
-  background:none;border:none;color:var(--text-3);cursor:pointer;
-  font-size:16px;padding:4px;border-radius:4px;transition:color .2s;
-  display:flex;align-items:center;
-}
-.pwd-toggle:hover{color:var(--text-1)}
+/* Workspace banner */
+.ws-banner{display:none;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--radius-sm);background:rgba(15,212,176,.08);border:1px solid rgba(15,212,176,.2);margin-bottom:18px;font-size:13px}
+.ws-banner.show{display:flex}
+.ws-banner-info{flex:1}
+.ws-banner-name{font-weight:600;color:var(--white);font-size:13px}
+.ws-banner-plan{font-size:11px;color:var(--muted);margin-top:1px}
+.ws-change{background:none;border:none;cursor:pointer;color:var(--blue-lt);font-size:11px;padding:0;transition:color .15s;white-space:nowrap;font-family:inherit}
+.ws-change:hover{color:var(--teal)}
 
-/* Field hint / error */
-.field-msg{font-size:11px;margin-top:5px;display:none}
-.field-msg.err{color:var(--red);display:block}
-.field-msg.ok{color:var(--teal);display:block}
-
-/* Remember + forgot */
-.login-options{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}
-.checkbox-wrap{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text-2)}
-.checkbox-wrap input[type=checkbox]{
-  width:16px;height:16px;accent-color:var(--cyan);cursor:pointer;
-}
-.forgot-link{font-size:13px;color:var(--cyan);text-decoration:none;opacity:.85}
-.forgot-link:hover{opacity:1;text-decoration:underline}
-
-/* Submit button */
-.btn-login{
-  width:100%;padding:13px;border-radius:var(--radius-sm);
-  background:linear-gradient(135deg,var(--brand-blue),#1a34a8);
-  color:#fff;font-family:var(--sans);font-size:14px;font-weight:700;
-  border:none;cursor:pointer;letter-spacing:.02em;
-  transition:opacity .2s,transform .15s,box-shadow .2s;
-  position:relative;overflow:hidden;
-  box-shadow:var(--shadow-btn);
-}
-.btn-login:hover:not(:disabled){opacity:.92;transform:translateY(-1px)}
-.btn-login:active:not(:disabled){transform:translateY(0);box-shadow:none}
-.btn-login:disabled{opacity:.5;cursor:not-allowed}
-.btn-login .btn-text{transition:opacity .2s}
-.btn-login .btn-spinner{
-  position:absolute;inset:0;display:none;align-items:center;justify-content:center;
-}
-.btn-login.loading .btn-text{opacity:0}
-.btn-login.loading .btn-spinner{display:flex}
-
-/* Spinner */
-.spinner{
-  width:20px;height:20px;border:2px solid rgba(255,255,255,.3);
-  border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;
-}
+/* Buttons */
+.btn-primary{width:100%;padding:12px 20px;border:none;border-radius:var(--radius-sm);background:linear-gradient(135deg,var(--blue),#1a40b8);color:#fff;font-size:14px;font-weight:600;font-family:inherit;cursor:pointer;transition:opacity .15s,transform .1s;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:8px}
+.btn-primary:hover:not(:disabled){opacity:.9}
+.btn-primary:active:not(:disabled){transform:scale(.99)}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed}
+.btn-primary.loading .btn-text{display:none}
+.btn-primary.loading .btn-spin{display:flex}
+.btn-spin{display:none;align-items:center;justify-content:center}
+.spinner{width:16px;height:16px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
 
-/* Error banner */
-.error-banner{
-  display:none;align-items:flex-start;gap:10px;
-  padding:12px 14px;border-radius:var(--radius-sm);
-  background:rgba(248,113,113,.08);border:1px solid rgba(248,113,113,.25);
-  color:var(--red);font-size:13px;margin-bottom:20px;line-height:1.4;
-}
-.error-banner.show{display:flex}
-.error-banner-icon{flex-shrink:0;font-size:16px;margin-top:1px}
+.btn-demo{width:100%;padding:11px 20px;border-radius:var(--radius-sm);background:rgba(15,212,176,.08);border:1px solid rgba(15,212,176,.25);color:var(--teal);font-size:13px;font-weight:600;font-family:inherit;cursor:pointer;transition:background .15s,border-color .15s;display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:12px}
+.btn-demo:hover:not(:disabled){background:rgba(15,212,176,.14);border-color:rgba(15,212,176,.4)}
+.btn-demo:disabled{opacity:.5;cursor:not-allowed}
+.btn-demo.loading .btn-text{display:none}
+.btn-demo.loading .btn-spin{display:flex}
 
-/* Success banner */
-.success-banner{
-  display:none;align-items:flex-start;gap:10px;
-  padding:12px 14px;border-radius:var(--radius-sm);
-  background:rgba(15,212,176,.08);border:1px solid rgba(15,212,176,.25);
-  color:var(--teal);font-size:13px;margin-bottom:20px;
-}
-.success-banner.show{display:flex}
+.btn-sso{width:100%;padding:11px 20px;border-radius:var(--radius-sm);background:rgba(255,255,255,.04);border:1px solid var(--border);color:var(--muted);font-size:13px;font-weight:500;font-family:inherit;cursor:pointer;transition:background .15s,border-color .15s,color .15s;display:flex;align-items:center;justify-content:center;gap:8px}
+.btn-sso:hover{background:rgba(255,255,255,.07);border-color:rgba(77,144,255,.3);color:var(--white)}
 
 /* Divider */
-.divider{display:flex;align-items:center;gap:12px;margin:24px 0;color:var(--text-3);font-size:12px}
+.divider{display:flex;align-items:center;gap:10px;font-size:11px;color:var(--dim);margin:14px 0}
 .divider::before,.divider::after{content:'';flex:1;height:1px;background:var(--border)}
 
-/* SSO button */
-.btn-sso{
-  width:100%;padding:11px;border-radius:var(--radius-sm);
-  background:var(--bg-card);border:1px solid var(--border);
-  color:var(--text-2);font-size:13px;font-weight:600;
-  cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;
-  transition:background .2s,border-color .2s,color .2s;
-}
-.btn-sso:hover{background:var(--bg-hover);border-color:rgba(77,144,255,.3);color:var(--text-1)}
-.btn-sso svg{flex-shrink:0}
+/* Error banner */
+.err-banner{display:none;align-items:center;gap:8px;padding:10px 12px;border-radius:var(--radius-sm);background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.3);font-size:12px;color:var(--err);margin-bottom:14px}
+.err-banner.show{display:flex}
 
-/* Footer links */
-.card-footer{text-align:center;font-size:12px;color:var(--text-3);margin-top:28px;line-height:1.7}
-.card-footer a{color:var(--cyan);text-decoration:none}
-.card-footer a:hover{text-decoration:underline}
+/* Success */
+.success-wrap{display:flex;flex-direction:column;align-items:center;padding:32px 20px;text-align:center}
+.success-icon{width:56px;height:56px;border-radius:50%;background:rgba(74,222,128,.12);border:2px solid rgba(74,222,128,.3);display:flex;align-items:center;justify-content:center;margin-bottom:14px;animation:popIn .4s ease}
+@keyframes popIn{0%{transform:scale(.7);opacity:0}70%{transform:scale(1.1)}100%{transform:scale(1);opacity:1}}
+.success-icon svg{width:24px;height:24px;color:var(--ok)}
+.success-title{font-family:'Poppins',Arial,sans-serif;font-size:20px;font-weight:700;color:var(--white);margin-bottom:6px}
+.success-sub{font-size:13px;color:var(--muted)}
 
-/* Panel transitions */
-.panel{transition:opacity .25s,transform .25s}
-.panel.hidden{opacity:0;pointer-events:none;position:absolute;transform:translateY(8px)}
+/* Recent workspaces */
+.recent-section{margin-bottom:18px}
+.recent-label{font-size:10px;font-weight:600;color:var(--dim);letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px}
+.recent-list{display:flex;flex-direction:column;gap:6px}
+.recent-item{display:flex;align-items:center;gap:10px;padding:9px 12px;background:rgba(255,255,255,.03);border:1px solid var(--border);border-radius:var(--radius-sm);cursor:pointer;transition:background .15s,border-color .15s}
+.recent-item:hover{background:rgba(77,144,255,.08);border-color:rgba(77,144,255,.3)}
+.recent-icon{width:28px;height:28px;border-radius:6px;background:linear-gradient(135deg,var(--blue),var(--navy-4));display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0}
+.recent-slug{font-size:10px;color:var(--dim);font-family:monospace}
 
-/* Tenant verification state */
-.tenant-checking{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-3);margin-top:6px;display:none}
-.tenant-checking.show{display:flex}
-.dot-pulse{width:6px;height:6px;border-radius:50%;background:var(--cyan);animation:pulse .8s ease-in-out infinite}
-@keyframes pulse{0%,100%{opacity:.3}50%{opacity:1}}
+/* Forgot / remember */
+.forgot-link{background:none;border:none;cursor:pointer;color:var(--blue-lt);font-size:11px;padding:0;font-family:inherit;transition:color .15s}
+.forgot-link:hover{color:var(--teal)}
+.remember-row{display:flex;align-items:center;gap:8px;margin-bottom:18px}
+.remember-row label{font-size:12px;color:var(--muted);cursor:pointer;user-select:none}
+.remember-row input[type=checkbox]{width:14px;height:14px;accent-color:var(--teal);cursor:pointer}
+
+/* Card footer */
+.card-footer{margin-top:28px;padding-top:20px;border-top:1px solid var(--border);font-size:12px;color:var(--dim);text-align:center}
+.card-footer a{color:var(--blue-lt);text-decoration:none}
+.card-footer a:hover{color:var(--teal)}
+
+/* Toasts */
+#toasts{position:fixed;bottom:24px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+.toast{padding:10px 16px;border-radius:8px;font-size:13px;font-weight:500;box-shadow:0 4px 20px rgba(0,0,0,.4);pointer-events:auto;animation:toastIn .2s ease}
+.toast-info{background:#1e3068;color:var(--blue-lt);border:1px solid rgba(77,144,255,.3)}
+.toast-error{background:#3b0f0f;color:var(--err);border:1px solid rgba(248,113,113,.3)}
+.toast-ok{background:#0d2a1a;color:var(--ok);border:1px solid rgba(74,222,128,.3)}
+@keyframes toastIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* Panels */
+.panel{transition:opacity .2s}
+.panel.hidden{display:none}
+
+/* Shake */
+@keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}
+.shake{animation:shake .35s ease}
 </style>
 </head>
 <body>
 
-<div class="login-wrap">
-
-  <!-- ════ LEFT PANEL ════ -->
-  <div class="login-left">
-    <div class="glow-2"></div>
-
-    <div class="left-content">
-      <!-- Brand -->
-      <div class="brand-mark">
-        <svg width="44" height="44" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <linearGradient id="lp-tri" x1="20%" y1="0%" x2="80%" y2="100%">
-              <stop offset="0%" stop-color="#4d90ff"/>
-              <stop offset="50%" stop-color="#2955d4"/>
-              <stop offset="100%" stop-color="#1a34a8"/>
-            </linearGradient>
-            <clipPath id="lp-clip"><polygon points="50,8 92,88 8,88"/></clipPath>
-          </defs>
-          <polygon points="50,8 92,88 8,88" fill="url(#lp-tri)"/>
-          <g clip-path="url(#lp-clip)" opacity="0.95">
-            <line x1="22" y1="95" x2="58" y2="5"  stroke="#0fd4b0" stroke-width="5.5" stroke-linecap="round"/>
-            <line x1="34" y1="95" x2="70" y2="5"  stroke="#0fd4b0" stroke-width="5.5" stroke-linecap="round"/>
-            <line x1="46" y1="95" x2="82" y2="5"  stroke="#0fd4b0" stroke-width="5.5" stroke-linecap="round"/>
-            <line x1="58" y1="95" x2="94" y2="5"  stroke="#0fd4b0" stroke-width="5.5" stroke-linecap="round"/>
-          </g>
-          <ellipse cx="50" cy="52" rx="46" ry="22" fill="none" stroke="#0fd4b0"
-            stroke-width="3.5" opacity="0.9" transform="rotate(-18 50 52)"/>
-        </svg>
-        <div>
-          <div class="brand-name">xREF Agent</div>
-          <div class="brand-sub">by infinite</div>
-        </div>
-      </div>
-
-      <!-- Hero -->
-      <h1 class="hero-headline">Source-to-Target<br>Mapping <span>Intelligence</span></h1>
-      <p class="hero-sub">
-        Automated cross-reference mapping powered by LLM agents — from schema upload to governed STM in minutes.
-      </p>
-
-      <!-- Features -->
-      <div class="feature-list">
-        <div class="feature-item">
-          <div class="feature-icon blue">🗄</div>
-          <div class="feature-body">
-            <div class="feature-title">Multi-Source Schema Discovery</div>
-            <div class="feature-desc">PostgreSQL, Snowflake, BigQuery, Databricks, DDL — all in one platform</div>
-          </div>
-        </div>
-        <div class="feature-item">
-          <div class="feature-icon teal">🤖</div>
-          <div class="feature-body">
-            <div class="feature-title">Agentic 6-Layer Mapping Pipeline</div>
-            <div class="feature-desc">Intent extraction through STM generation with confidence scoring</div>
-          </div>
-        </div>
-        <div class="feature-item">
-          <div class="feature-icon purple">📊</div>
-          <div class="feature-body">
-            <div class="feature-title">Governance &amp; FinOps Built-in</div>
-            <div class="feature-desc">Human-in-loop approval gates with per-session token cost tracking</div>
-          </div>
-        </div>
-      </div>
+<!-- BRAND PANEL -->
+<div id="brandPanel">
+  <div class="brand-logo">
+    <div class="brand-mark">
+      <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <linearGradient id="lg" x1="20%" y1="0%" x2="80%" y2="100%">
+            <stop offset="0%" stop-color="#4d90ff"/>
+            <stop offset="50%" stop-color="#2955d4"/>
+            <stop offset="100%" stop-color="#1a34a8"/>
+          </linearGradient>
+          <clipPath id="cp"><polygon points="50,8 92,88 8,88"/></clipPath>
+        </defs>
+        <polygon points="50,8 92,88 8,88" fill="url(#lg)"/>
+        <g clip-path="url(#cp)" opacity=".95">
+          <line x1="22" y1="95" x2="58" y2="5" stroke="#0fd4b0" stroke-width="5.5" stroke-linecap="round"/>
+          <line x1="34" y1="95" x2="70" y2="5" stroke="#0fd4b0" stroke-width="5.5" stroke-linecap="round"/>
+          <line x1="46" y1="95" x2="82" y2="5" stroke="#0fd4b0" stroke-width="5.5" stroke-linecap="round"/>
+          <line x1="58" y1="95" x2="94" y2="5" stroke="#0fd4b0" stroke-width="5.5" stroke-linecap="round"/>
+        </g>
+        <ellipse cx="50" cy="52" rx="46" ry="22" fill="none" stroke="#0fd4b0" stroke-width="3.5" opacity=".9" transform="rotate(-18 50 52)"/>
+      </svg>
     </div>
+    <div class="brand-name">x<span>REF</span> Agent</div>
+  </div>
 
-    <div class="left-footer">
-      <div class="tenant-badges">
-        <div class="tenant-badge active" id="leftTenantBadge">infinite</div>
-        <div class="tenant-badge">enterprise</div>
-        <div class="tenant-badge">SOC 2</div>
+  <div class="brand-body">
+    <div class="brand-headline">Intelligent<br><em>Source-to-Target</em><br>Mapping</div>
+    <div class="brand-sub">AI-powered cross-system field mapping that understands your schemas, generates SQL, and learns from every review.</div>
+    <div class="feature-list">
+      <div class="feature-item">
+        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5M2 12l10 5 10-5"/></svg></div>
+        <div class="feature-text"><strong>Multi-source connectors</strong>Postgres, Oracle, Snowflake, BigQuery, Databricks — unified in one session.</div>
       </div>
-      <div class="left-footer-text">© 2026 Infinite · Secure multi-tenant platform</div>
+      <div class="feature-item">
+        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg></div>
+        <div class="feature-text"><strong>Confidence scoring</strong>Every mapping gets a confidence score with automated tier classification.</div>
+      </div>
+      <div class="feature-item">
+        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
+        <div class="feature-text"><strong>SQL &amp; Excel export</strong>Dialect-specific SQL with full provenance — BigQuery, Snowflake, Spark.</div>
+      </div>
     </div>
   </div>
 
-  <!-- ════ RIGHT PANEL ════ -->
-  <div class="login-right">
-    <div class="login-card">
-
-      <!-- Mobile brand -->
-      <div class="mobile-brand">
-        <svg width="36" height="36" viewBox="0 0 100 100">
-          <defs>
-            <linearGradient id="mb-tri" x1="20%" y1="0%" x2="80%" y2="100%">
-              <stop offset="0%" stop-color="#4d90ff"/>
-              <stop offset="100%" stop-color="#1a34a8"/>
-            </linearGradient>
-            <clipPath id="mb-clip"><polygon points="50,8 92,88 8,88"/></clipPath>
-          </defs>
-          <polygon points="50,8 92,88 8,88" fill="url(#mb-tri)"/>
-          <g clip-path="url(#mb-clip)" opacity="0.9">
-            <line x1="22" y1="95" x2="58" y2="5" stroke="#0fd4b0" stroke-width="5.5" stroke-linecap="round"/>
-            <line x1="34" y1="95" x2="70" y2="5" stroke="#0fd4b0" stroke-width="5.5" stroke-linecap="round"/>
-            <line x1="46" y1="95" x2="82" y2="5" stroke="#0fd4b0" stroke-width="5.5" stroke-linecap="round"/>
-          </g>
-          <ellipse cx="50" cy="52" rx="46" ry="22" fill="none" stroke="#0fd4b0" stroke-width="3.5" transform="rotate(-18 50 52)"/>
-        </svg>
-        <span style="font-size:18px;font-weight:700;color:var(--text-1)">xREF Agent</span>
-      </div>
-
-      <!-- Step tracker -->
-      <div class="steps-row" id="stepsRow">
-        <div class="step-dot active" id="step1">1</div>
-        <div class="step-line" id="line1"></div>
-        <div class="step-dot pending" id="step2">2</div>
-        <div class="step-line" id="line2"></div>
-        <div class="step-dot pending" id="step3">✓</div>
-      </div>
-      <div class="steps-labels">
-        <span class="active-lbl" id="lbl1">Workspace</span>
-        <span id="lbl2">Credentials</span>
-        <span id="lbl3">Access</span>
-      </div>
-
-      <!-- ── STEP 1: Tenant selection ── -->
-      <div id="panelTenant" class="panel">
-        <div class="card-eyebrow">Step 1 of 2</div>
-        <h2 class="card-title">Find your workspace</h2>
-        <p class="card-subtitle">Enter your team's workspace ID to get started.</p>
-
-        <div id="errorBanner1" class="error-banner">
-          <span class="error-banner-icon">⚠</span>
-          <span id="errorText1"></span>
-        </div>
-
-        <div class="field">
-          <label class="field-label" for="tenantInput">Workspace ID</label>
-          <div class="field-input-wrap">
-            <span class="input-prefix">xref.ai /</span>
-            <input class="field-input has-prefix" type="text" id="tenantInput"
-              placeholder="your-workspace" autocomplete="organization" autocapitalize="none"
-              spellcheck="false" oninput="onTenantInput()" onkeydown="if(event.key==='Enter')checkTenant()">
-          </div>
-          <div class="tenant-checking" id="tenantChecking">
-            <div class="dot-pulse"></div> Looking up workspace…
-          </div>
-          <div class="field-msg" id="tenantMsg"></div>
-        </div>
-
-        <!-- Recent workspaces -->
-        <div id="recentWorkspaces" style="margin-bottom:20px;display:none">
-          <div style="font-size:11px;color:var(--text-3);font-weight:600;letter-spacing:.04em;margin-bottom:8px;text-transform:uppercase">Recent</div>
-          <div id="recentList" style="display:flex;flex-direction:column;gap:6px"></div>
-        </div>
-
-        <button class="btn-login" id="btnTenant" onclick="checkTenant()">
-          <span class="btn-text">Continue →</span>
-          <span class="btn-spinner"><div class="spinner"></div></span>
-        </button>
-
-        <div class="divider">or try a demo</div>
-        <button class="btn-sso" onclick="quickDemoLogin()" id="btnDemo"
-          style="background:linear-gradient(135deg,#0d2a50,#0f3460);border-color:#1a5276;gap:10px">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#0fd4b0" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/><path d="M10 8l6 4-6 4V8z"/>
-          </svg>
-          <span>Quick Demo Access</span>
-        </button>
-
-        <div class="divider">or sign in with SSO</div>
-        <button class="btn-sso" onclick="toast('SSO requires enterprise IdP configuration.','info')">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-          </svg>
-          Continue with SSO
-        </button>
-
-        <div class="card-footer">
-          New to xREF? <a href="mailto:hello@infinite.io">Contact sales</a> &nbsp;·&nbsp;
-          <a href="#" onclick="toast('Check docs.xref.ai for setup guides.','info')">Help</a>
-        </div>
-      </div>
-
-      <!-- ── STEP 2: Email + Password ── -->
-      <div id="panelCredentials" class="panel hidden" style="position:relative">
-        <div class="card-eyebrow">Step 2 of 2</div>
-        <h2 class="card-title">Welcome back</h2>
-
-        <div id="tenantDisplayBar" class="tenant-display">
-          <span class="tenant-display-icon">🏢</span>
-          <span class="tenant-display-name" id="tenantDisplayName">—</span>
-          <span class="tenant-display-plan" id="tenantDisplayPlan">enterprise</span>
-          <button class="tenant-display-change" onclick="backToTenant()">Change</button>
-        </div>
-
-        <p class="card-subtitle" style="margin-top:-8px" id="credSubtitle">Sign in to continue to your workspace.</p>
-
-        <div id="errorBanner2" class="error-banner">
-          <span class="error-banner-icon">⚠</span>
-          <span id="errorText2"></span>
-        </div>
-        <div id="successBanner" class="success-banner">
-          <span>✓</span>
-          <span>Authenticated! Redirecting…</span>
-        </div>
-
-        <div class="field">
-          <label class="field-label" for="emailInput">Email address</label>
-          <input class="field-input" type="email" id="emailInput"
-            placeholder="you@company.com" autocomplete="email"
-            oninput="clearFieldError('emailInput','emailMsg')"
-            onkeydown="if(event.key==='Enter')focusPassword()">
-          <div class="field-msg" id="emailMsg"></div>
-        </div>
-
-        <div class="field">
-          <label class="field-label" for="passwordInput">Password</label>
-          <div class="field-input-wrap">
-            <input class="field-input" type="password" id="passwordInput"
-              placeholder="••••••••" autocomplete="current-password"
-              style="padding-right:44px"
-              oninput="clearFieldError('passwordInput','passwordMsg')"
-              onkeydown="if(event.key==='Enter')doLogin()">
-            <button class="pwd-toggle" type="button" onclick="togglePwd()" title="Show / hide password">
-              <span id="pwdEye">👁</span>
-            </button>
-          </div>
-          <div class="field-msg" id="passwordMsg"></div>
-        </div>
-
-        <div class="login-options">
-          <label class="checkbox-wrap">
-            <input type="checkbox" id="rememberMe" checked>
-            Stay signed in for 30 days
-          </label>
-          <a href="#" class="forgot-link" onclick="showForgot();return false">Forgot password?</a>
-        </div>
-
-        <button class="btn-login" id="btnLogin" onclick="doLogin()">
-          <span class="btn-text">Sign In</span>
-          <span class="btn-spinner"><div class="spinner"></div></span>
-        </button>
-
-        <div class="card-footer">
-          Problems signing in? <a href="mailto:support@infinite.io">Contact support</a>
-          &nbsp;·&nbsp; <a href="#" onclick="backToTenant();return false">Wrong workspace?</a>
-        </div>
-      </div>
-
-    </div><!-- /login-card -->
-  </div><!-- /login-right -->
+  <div class="brand-footer">&copy; 2026 Infinite &middot; xREF Agent v2.0</div>
 </div>
 
-<!-- Toast container -->
-<div id="toastContainer" style="position:fixed;bottom:24px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:8px"></div>
+<!-- LOGIN PANEL -->
+<div id="loginPanel">
+  <div class="login-card" id="loginCard">
+
+    <div class="card-logo">
+      <div class="card-logo-mark">
+        <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="lg2" x1="20%" y1="0%" x2="80%" y2="100%"><stop offset="0%" stop-color="#4d90ff"/><stop offset="100%" stop-color="#1a34a8"/></linearGradient>
+            <clipPath id="cp2"><polygon points="50,8 92,88 8,88"/></clipPath>
+          </defs>
+          <polygon points="50,8 92,88 8,88" fill="url(#lg2)"/>
+          <g clip-path="url(#cp2)"><line x1="22" y1="95" x2="58" y2="5" stroke="#0fd4b0" stroke-width="6" stroke-linecap="round"/><line x1="42" y1="95" x2="78" y2="5" stroke="#0fd4b0" stroke-width="6" stroke-linecap="round"/></g>
+          <ellipse cx="50" cy="52" rx="46" ry="22" fill="none" stroke="#0fd4b0" stroke-width="4" opacity=".9" transform="rotate(-18 50 52)"/>
+        </svg>
+      </div>
+      <div class="card-logo-name">x<span>REF</span> Agent</div>
+    </div>
+
+    <!-- Steps -->
+    <div class="steps">
+      <div class="step-dot active" id="s1">1</div>
+      <div class="step-line" id="sl1"></div>
+      <div class="step-dot" id="s2">2</div>
+      <div class="step-line" id="sl2"></div>
+      <div class="step-dot" id="s3">3</div>
+    </div>
+
+    <!-- PANEL 1: WORKSPACE -->
+    <div class="panel" id="panelWs">
+      <div class="card-title">Welcome back</div>
+      <div class="card-subtitle">Enter your workspace ID to get started</div>
+
+      <div class="recent-section" id="recentSection" style="display:none">
+        <div class="recent-label">Recent workspaces</div>
+        <div class="recent-list" id="recentList"></div>
+        <div class="divider">or enter workspace ID</div>
+      </div>
+
+      <div class="field">
+        <label for="wsInput">Workspace ID</label>
+        <input id="wsInput" type="text" placeholder="e.g. demo, infinite, acme" autocomplete="organization"
+          oninput="onWsInput()" onkeydown="if(event.key==='Enter')checkWorkspace()">
+        <div class="field-err" id="wsErr"></div>
+      </div>
+
+      <button class="btn-primary" id="btnWs" onclick="checkWorkspace()">
+        <span class="btn-text">Continue &nbsp;&#8250;</span>
+        <span class="btn-spin"><div class="spinner"></div></span>
+      </button>
+
+      <div class="divider">quick access</div>
+      <button class="btn-demo" id="btnDemo" onclick="quickDemoLogin()">
+        <span class="btn-text">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+          Demo Access &mdash; one click
+        </span>
+        <span class="btn-spin"><div class="spinner"></div></span>
+      </button>
+      <button class="btn-sso" onclick="showToast('SSO requires enterprise IdP configuration.','info')">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        Continue with SSO
+      </button>
+
+      <div class="card-footer">New to xREF? <a href="mailto:hello@infinite.io">Contact sales</a> &nbsp;&middot;&nbsp; <a href="#">Help</a></div>
+    </div>
+
+    <!-- PANEL 2: CREDENTIALS -->
+    <div class="panel hidden" id="panelCreds">
+      <div class="ws-banner" id="wsBanner">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0fd4b0" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        <div class="ws-banner-info">
+          <div class="ws-banner-name" id="wsBannerName">—</div>
+          <div class="ws-banner-plan" id="wsBannerPlan">—</div>
+        </div>
+        <button class="ws-change" onclick="backToWs()">Change</button>
+      </div>
+
+      <div class="card-title">Sign in</div>
+      <div class="card-subtitle" id="credSub">Enter your credentials</div>
+
+      <div class="err-banner" id="credErr">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        <span id="credErrMsg">Invalid email or password</span>
+      </div>
+
+      <div class="field">
+        <label for="emailInput">Email address</label>
+        <input id="emailInput" type="email" placeholder="you@company.com" autocomplete="email"
+          oninput="clearCredErr()" onkeydown="if(event.key==='Enter')document.getElementById('pwdInput').focus()">
+        <div class="field-err" id="emailErr"></div>
+      </div>
+
+      <div class="field">
+        <label for="pwdInput">
+          Password
+          <button class="forgot-link" onclick="showToast('Contact your admin to reset your password','info')">Forgot password?</button>
+        </label>
+        <div class="pwd-wrap">
+          <input id="pwdInput" type="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" autocomplete="current-password"
+            oninput="clearCredErr()" onkeydown="if(event.key==='Enter')doLogin()">
+          <button class="pwd-toggle" onclick="togglePwd()" id="pwdToggle" tabindex="-1">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+        </div>
+        <div class="field-err" id="pwdErr"></div>
+      </div>
+
+      <div class="remember-row">
+        <input type="checkbox" id="rememberMe" checked>
+        <label for="rememberMe">Keep me signed in for 30 days</label>
+      </div>
+
+      <button class="btn-primary" id="btnLogin" onclick="doLogin()">
+        <span class="btn-text">Sign In</span>
+        <span class="btn-spin"><div class="spinner"></div></span>
+      </button>
+
+      <div class="card-footer">Wrong workspace? <a href="#" onclick="backToWs();return false">Go back</a></div>
+    </div>
+
+    <!-- PANEL 3: SUCCESS -->
+    <div class="panel hidden" id="panelSuccess">
+      <div class="success-wrap">
+        <div class="success-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+        </div>
+        <div class="success-title">You're in!</div>
+        <div class="success-sub">Redirecting to your workspace&hellip;</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div id="toasts"></div>
 
 <script>
-const API = (()=>{
+const API = (() => {
   const h = location.hostname;
-  if (h === 'localhost' || h === '127.0.0.1') return `http://${h}:7788`;
-  return '';
+  return (h==='localhost'||h==='127.0.0.1') ? `http://${h}:7788` : '';
 })();
+let _tenant = null;
 
-// ── State ──────────────────────────────────────────────────────────────────
-let _currentTenant = null;   // {slug, name, plan}
-let _tenantTimer   = null;
-
-// ── On load ───────────────────────────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
-  // Check if already logged in
-  const token = localStorage.getItem('xref_auth_token');
-  if (token) {
-    verifyExistingToken(token);
-  }
-
-  // Pre-fill tenant from URL param: ?tenant=infinite
-  const urlTenant = new URLSearchParams(location.search).get('tenant');
-  if (urlTenant) {
-    document.getElementById('tenantInput').value = urlTenant;
-    checkTenant();
-  }
-
-  // Load recent workspaces
+  const tok = localStorage.getItem('xref_auth_token');
+  if (tok) verifyToken(tok);
+  const urlWs = new URLSearchParams(location.search).get('tenant');
+  if (urlWs) { document.getElementById('wsInput').value = urlWs; checkWorkspace(); }
   loadRecent();
 });
 
-async function verifyExistingToken(token) {
+async function verifyToken(tok) {
   try {
-    const r = await fetch(`${API}/api/auth/me`, {
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    if (r.ok) {
-      const d = await r.json();
-      // Still valid — redirect directly
-      redirectToApp(d.tenant, d.email);
-      return;
-    }
+    const r = await fetch(`${API}/api/auth/me`, { headers: { Authorization: `Bearer ${tok}` }});
+    if (r.ok) { const d = await r.json(); redirectToApp(d.tenant, d.email); }
+    else localStorage.removeItem('xref_auth_token');
   } catch {}
-  localStorage.removeItem('xref_auth_token');
 }
 
-// ── Recent workspaces ─────────────────────────────────────────────────────
 function loadRecent() {
-  const stored = JSON.parse(localStorage.getItem('xref_recent_tenants') || '[]');
+  const stored = JSON.parse(localStorage.getItem('xref_recent_workspaces')||'[]');
   if (!stored.length) return;
-  const wrap = document.getElementById('recentWorkspaces');
-  const list = document.getElementById('recentList');
-  list.innerHTML = stored.slice(0,3).map(t => `
-    <button onclick="pickRecent('${t.slug}')"
-      style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;
-      background:var(--bg-card);border:1px solid var(--border);cursor:pointer;
-      width:100%;text-align:left;transition:background .15s"
-      onmouseover="this.style.background='var(--bg-hover)'"
-      onmouseout="this.style.background='var(--bg-card)'">
-      <span style="font-size:18px">🏢</span>
-      <div>
-        <div style="font-size:13px;font-weight:600;color:var(--text-1)">${escHtml(t.name)}</div>
-        <div style="font-size:11px;color:var(--text-3);font-family:var(--mono)">xref.ai/${escHtml(t.slug)}</div>
+  const sec = document.getElementById('recentSection');
+  const lst = document.getElementById('recentList');
+  lst.innerHTML = stored.slice(0,3).map(t=>`
+    <div class="recent-item" onclick="pickRecent('${esc(t.slug)}')">
+      <div class="recent-icon">${esc(t.name.charAt(0).toUpperCase())}</div>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:500;color:var(--white)">${esc(t.name)}</div>
+        <div class="recent-slug">${esc(t.slug)}</div>
       </div>
-      <span style="margin-left:auto;font-size:11px;color:var(--cyan)">→</span>
-    </button>`).join('');
-  wrap.style.display = 'block';
+      <span style="color:var(--dim);font-size:16px">&rsaquo;</span>
+    </div>`).join('');
+  sec.style.display = 'block';
 }
-
-function saveRecent(tenant) {
-  let stored = JSON.parse(localStorage.getItem('xref_recent_tenants') || '[]');
-  stored = stored.filter(t => t.slug !== tenant.slug);
-  stored.unshift(tenant);
-  localStorage.setItem('xref_recent_tenants', JSON.stringify(stored.slice(0,5)));
+function saveRecent(t) {
+  let s = JSON.parse(localStorage.getItem('xref_recent_workspaces')||'[]');
+  s = s.filter(x=>x.slug!==t.slug); s.unshift(t);
+  localStorage.setItem('xref_recent_workspaces', JSON.stringify(s.slice(0,5)));
 }
+function pickRecent(slug) { document.getElementById('wsInput').value=slug; checkWorkspace(); }
 
-function pickRecent(slug) {
-  document.getElementById('tenantInput').value = slug;
-  checkTenant();
-}
+let _wsTimer=null;
+function onWsInput(){ clearFldErr('wsInput','wsErr'); }
 
-// ── Tenant check ──────────────────────────────────────────────────────────
-function onTenantInput() {
-  clearError(1);
-  clearMsg('tenantMsg');
-  clearTimeout(_tenantTimer);
-  const val = document.getElementById('tenantInput').value.trim();
-  if (val.length >= 2) {
-    _tenantTimer = setTimeout(() => autoCheckTenant(val), 600);
-  }
-}
-
-async function autoCheckTenant(slug) {
-  try {
-    const r = await fetch(`${API}/api/auth/tenant/${encodeURIComponent(slug.toLowerCase())}`);
-    if (r.ok) {
-      const d = await r.json();
-      setMsg('tenantMsg', `✓ Found: ${d.name}`, 'ok');
-    } else {
-      clearMsg('tenantMsg');
-    }
-  } catch {}
-}
-
-async function checkTenant() {
-  const slug = document.getElementById('tenantInput').value.trim().toLowerCase();
-  if (!slug) { showError(1, 'Please enter your workspace ID'); return; }
-
-  const btn = document.getElementById('btnTenant');
-  btn.classList.add('loading'); btn.disabled = true;
-  clearError(1); clearMsg('tenantMsg');
-
-  document.getElementById('tenantChecking').classList.add('show');
-
+async function checkWorkspace() {
+  const slug = document.getElementById('wsInput').value.trim().toLowerCase();
+  if (!slug) { showFldErr('wsInput','wsErr','Please enter your workspace ID'); return; }
+  setBtnLoad('btnWs',true);
   try {
     const r = await fetch(`${API}/api/auth/tenant/${encodeURIComponent(slug)}`);
     const d = await r.json();
-
-    if (!r.ok) {
-      showError(1, d.detail || 'Workspace not found. Check the workspace ID and try again.');
-      return;
-    }
-
-    _currentTenant = d;
-    saveRecent(d);
-    goToCredentials(d);
-  } catch(e) {
-    showError(1, 'Cannot reach the xREF server. Is it running?');
-  } finally {
-    btn.classList.remove('loading'); btn.disabled = false;
-    document.getElementById('tenantChecking').classList.remove('show');
-  }
+    if (!r.ok) { showFldErr('wsInput','wsErr',d.detail||'Workspace not found'); return; }
+    _tenant = d; saveRecent(d); goToCreds(d);
+  } catch { showFldErr('wsInput','wsErr','Cannot reach server — run ./run.sh first'); }
+  finally { setBtnLoad('btnWs',false); }
 }
 
-function goToCredentials(tenant) {
-  // Update left badge
-  document.getElementById('leftTenantBadge').textContent = tenant.slug;
-
-  // Update tenant display bar
-  document.getElementById('tenantDisplayName').textContent = tenant.name;
-  document.getElementById('tenantDisplayPlan').textContent = tenant.plan || 'standard';
-  document.getElementById('credSubtitle').textContent = `Sign in to ${tenant.name} on xref.ai`;
-
-  // Update steps
-  setStep(2);
-
-  // Swap panels
-  document.getElementById('panelTenant').classList.add('hidden');
-  setTimeout(() => {
-    document.getElementById('panelCredentials').classList.remove('hidden');
-    document.getElementById('emailInput').focus();
-  }, 50);
+function goToCreds(t) {
+  document.getElementById('wsBannerName').textContent = t.name;
+  document.getElementById('wsBannerPlan').textContent = `${t.plan||'standard'} plan · ${t.slug}`;
+  document.getElementById('wsBanner').classList.add('show');
+  document.getElementById('credSub').textContent = `Signing into ${t.name}`;
+  setStep(2); switchPanel('panelWs','panelCreds');
+  setTimeout(()=>document.getElementById('emailInput').focus(),80);
 }
+function backToWs() { _tenant=null; setStep(1); switchPanel('panelCreds','panelWs'); clearCredErr(); }
 
-function backToTenant() {
-  setStep(1);
-  document.getElementById('panelCredentials').classList.add('hidden');
-  setTimeout(() => {
-    document.getElementById('panelTenant').classList.remove('hidden');
-    document.getElementById('tenantInput').focus();
-  }, 50);
-  clearError(2);
-}
-
-function setStep(n) {
-  const dots  = [null, document.getElementById('step1'), document.getElementById('step2'), document.getElementById('step3')];
-  const lines = [null, document.getElementById('line1'), document.getElementById('line2')];
-  const lbls  = [null, document.getElementById('lbl1'), document.getElementById('lbl2'), document.getElementById('lbl3')];
-
-  dots.forEach((d, i) => {
-    if (!d) return;
-    d.classList.remove('active','done','pending');
-    if (i < n) d.classList.add('done');
-    else if (i === n) d.classList.add('active');
-    else d.classList.add('pending');
-  });
-
-  lines.forEach((l, i) => {
-    if (!l) return;
-    l.classList.toggle('done', i < n);
-  });
-
-  lbls.forEach((l, i) => {
-    if (!l) return;
-    l.classList.toggle('active-lbl', i === n);
-  });
-}
-
-// ── Credentials ───────────────────────────────────────────────────────────
-function focusPassword() {
-  const e = document.getElementById('emailInput').value.trim();
-  if (!e) { showFieldError('emailInput','emailMsg','Email is required'); return; }
-  document.getElementById('passwordInput').focus();
+function clearCredErr() {
+  document.getElementById('credErr').classList.remove('show');
+  clearFldErr('emailInput','emailErr'); clearFldErr('pwdInput','pwdErr');
 }
 
 async function doLogin() {
-  clearError(2);
-
-  const email    = document.getElementById('emailInput').value.trim();
-  const password = document.getElementById('passwordInput').value;
-  const remember = document.getElementById('rememberMe').checked;
-
-  // Validation
-  let ok = true;
-  if (!email) { showFieldError('emailInput','emailMsg','Email is required'); ok = false; }
-  else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { showFieldError('emailInput','emailMsg','Enter a valid email address'); ok = false; }
-  if (!password) { showFieldError('passwordInput','passwordMsg','Password is required'); ok = false; }
-  if (!ok) return;
-
-  const btn = document.getElementById('btnLogin');
-  btn.classList.add('loading'); btn.disabled = true;
-
+  clearCredErr();
+  const email=document.getElementById('emailInput').value.trim();
+  const pwd=document.getElementById('pwdInput').value;
+  const rem=document.getElementById('rememberMe').checked;
+  let ok=true;
+  if(!email){showFldErr('emailInput','emailErr','Email is required');ok=false;}
+  else if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){showFldErr('emailInput','emailErr','Enter a valid email');ok=false;}
+  if(!pwd){showFldErr('pwdInput','pwdErr','Password is required');ok=false;}
+  if(!ok)return;
+  setBtnLoad('btnLogin',true);
   try {
-    const r = await fetch(`${API}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tenant: _currentTenant.slug, email, password, remember }),
-    });
-    const d = await r.json();
-
-    if (!r.ok) {
-      showError(2, d.detail || 'Invalid email or password. Please try again.');
-      shakeCard();
-      return;
-    }
-
-    // Store token
-    localStorage.setItem('xref_auth_token', d.token);
-    localStorage.setItem('xref_user_email', d.email);
-    localStorage.setItem('xref_user_tenant', d.tenant);
-    localStorage.setItem('xref_user_tenant_name', d.tenant_name);
-    localStorage.setItem('xref_user_role', d.role || 'readonly');
-
-    // Show step 3 as done
-    setStep(3);
-    document.getElementById('successBanner').classList.add('show');
-
-    setTimeout(() => redirectToApp(d.tenant, d.email), 900);
-  } catch(e) {
-    showError(2, 'Cannot reach the server. Please check your connection.');
-  } finally {
-    btn.classList.remove('loading'); btn.disabled = false;
-  }
-}
-
-function redirectToApp(tenant, email) {
-  const next = new URLSearchParams(location.search).get('next') || '/';
-  window.location.href = `${next}?tenant=${encodeURIComponent(tenant)}&user=${encodeURIComponent(email)}`;
+    const r=await fetch(`${API}/api/auth/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tenant:_tenant.slug,email,password:pwd,remember:rem})});
+    const d=await r.json();
+    if(!r.ok){showCredErr(d.detail||'Invalid email or password');shakeCard();return;}
+    storeSession(d); setStep(3); switchPanel('panelCreds','panelSuccess');
+    setTimeout(()=>redirectToApp(d.tenant,d.email),1000);
+  } catch { showCredErr('Cannot reach server — check your connection'); }
+  finally { setBtnLoad('btnLogin',false); }
 }
 
 async function quickDemoLogin() {
-  const btn = document.getElementById('btnDemo');
-  if (btn) { btn.disabled = true; btn.querySelector('span').textContent = 'Signing in...'; }
+  setBtnLoad('btnDemo',true);
   try {
-    const r = await fetch(`${API}/api/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tenant: 'demo', email: 'demo@xref.ai', password: 'demo', remember: true }),
-    });
-    const d = await r.json();
-    if (!r.ok) { toast(d.detail || 'Demo login failed', 'error'); return; }
-    localStorage.setItem('xref_auth_token', d.token);
-    localStorage.setItem('xref_user_email', d.email);
-    localStorage.setItem('xref_user_tenant', d.tenant);
-    localStorage.setItem('xref_user_tenant_name', d.tenant_name);
-    localStorage.setItem('xref_user_role', d.role || 'admin');
-    redirectToApp(d.tenant, d.email);
-  } catch(e) {
-    toast('Cannot reach server — is ./run.sh running?', 'error');
-  } finally {
-    if (btn) { btn.disabled = false; btn.querySelector('span').textContent = 'Quick Demo Access'; }
-  }
+    const r=await fetch(`${API}/api/auth/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tenant:'demo',email:'demo@xref.ai',password:'demo',remember:true})});
+    const d=await r.json();
+    if(!r.ok){showToast(d.detail||'Demo login failed','error');return;}
+    storeSession(d); setStep(3); switchPanel('panelWs','panelSuccess');
+    setTimeout(()=>redirectToApp(d.tenant,d.email),900);
+  } catch { showToast('Cannot reach server — run ./run.sh first','error'); }
+  finally { setBtnLoad('btnDemo',false); }
 }
 
-// ── Password visibility ───────────────────────────────────────────────────
+function storeSession(d) {
+  localStorage.setItem('xref_auth_token',d.token);
+  localStorage.setItem('xref_user_email',d.email);
+  localStorage.setItem('xref_user_tenant',d.tenant);
+  localStorage.setItem('xref_user_tenant_name',d.tenant_name||d.tenant);
+  localStorage.setItem('xref_user_role',d.role||'readonly');
+}
+
+function redirectToApp(tenant,email) {
+  const next=new URLSearchParams(location.search).get('next')||'/';
+  window.location.href=`${next}${next.includes('?')?'&':'?'}tenant=${encodeURIComponent(tenant)}&user=${encodeURIComponent(email)}`;
+}
+
 function togglePwd() {
-  const inp  = document.getElementById('passwordInput');
-  const eye  = document.getElementById('pwdEye');
-  const show = inp.type === 'password';
-  inp.type = show ? 'text' : 'password';
-  eye.textContent = show ? '🙈' : '👁';
+  const inp=document.getElementById('pwdInput');
+  const btn=document.getElementById('pwdToggle');
+  const show=inp.type==='password';
+  inp.type=show?'text':'password';
+  btn.innerHTML=show
+    ?`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`
+    :`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
 }
 
-// ── Forgot password flow ──────────────────────────────────────────────────
-function showForgot() {
-  toast('Password reset email sent (demo mode — check console)', 'info');
-  console.info('[xREF] Forgot password for:', document.getElementById('emailInput').value || '(no email entered)');
+function setStep(n) {
+  [1,2,3].forEach(i=>{
+    const dot=document.getElementById(`s${i}`);
+    const line=document.getElementById(`sl${i}`);
+    dot.classList.remove('active','done');
+    if(i<n){dot.classList.add('done');dot.textContent='✓';}
+    else if(i===n){dot.classList.add('active');if(i>1)dot.textContent=String(i);}
+    else dot.textContent=String(i);
+    if(line){line.classList.toggle('done',i<n);}
+  });
 }
-
-// ── Helpers ───────────────────────────────────────────────────────────────
-function showError(panel, msg) {
-  const el  = document.getElementById(`errorBanner${panel}`);
-  const txt = document.getElementById(`errorText${panel}`);
-  txt.textContent = msg;
-  el.classList.add('show');
+function switchPanel(from,to) {
+  document.getElementById(from).classList.add('hidden');
+  document.getElementById(to).classList.remove('hidden');
 }
-function clearError(panel) {
-  document.getElementById(`errorBanner${panel}`)?.classList.remove('show');
+function setBtnLoad(id,loading) {
+  const btn=document.getElementById(id);if(!btn)return;
+  btn.disabled=loading;btn.classList.toggle('loading',loading);
 }
-function setMsg(id, msg, type) {
-  const el = document.getElementById(id);
-  el.textContent = msg;
-  el.className = `field-msg ${type}`;
+function showFldErr(inp,err,msg) {
+  document.getElementById(inp)?.classList.add('err-input');
+  const e=document.getElementById(err);if(e){e.textContent=msg;e.classList.add('show');}
 }
-function clearMsg(id) {
-  const el = document.getElementById(id);
-  el.textContent = '';
-  el.className = 'field-msg';
+function clearFldErr(inp,err) {
+  document.getElementById(inp)?.classList.remove('err-input');
+  document.getElementById(err)?.classList.remove('show');
 }
-function showFieldError(inputId, msgId, msg) {
-  document.getElementById(inputId).classList.add('error');
-  setMsg(msgId, msg, 'err');
-}
-function clearFieldError(inputId, msgId) {
-  document.getElementById(inputId).classList.remove('error','valid');
-  clearMsg(msgId);
+function showCredErr(msg) {
+  document.getElementById('credErrMsg').textContent=msg;
+  document.getElementById('credErr').classList.add('show');
 }
 function shakeCard() {
-  const card = document.querySelector('.login-card');
-  card.style.animation = 'shake .4s ease';
-  setTimeout(() => card.style.animation = '', 400);
+  const c=document.getElementById('loginCard');
+  c.classList.remove('shake');void c.offsetWidth;c.classList.add('shake');
 }
-function escHtml(s) {
-  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+function showToast(msg,type='info') {
+  const c=document.getElementById('toasts');
+  const el=document.createElement('div');
+  el.className=`toast toast-${type==='error'?'error':type==='ok'?'ok':'info'}`;
+  el.textContent=msg;c.appendChild(el);
+  setTimeout(()=>el.remove(),3500);
 }
-
-// ── Toast ────────────────────────────────────────────────────────────────
-function toast(msg, type='info') {
-  const colors = { info:'#4d90ff', ok:'#0fd4b0', error:'#f87171', warn:'#fb923c' };
-  const el = document.createElement('div');
-  el.style.cssText = `
-    padding:10px 16px;border-radius:8px;font-size:13px;max-width:280px;line-height:1.4;
-    background:#1a2540;border:1px solid ${colors[type]||colors.info}40;
-    color:var(--text-1);box-shadow:0 4px 20px rgba(0,0,0,.4);
-    animation:slideIn .25s ease;pointer-events:none;
-    border-left:3px solid ${colors[type]||colors.info};
-  `;
-  el.textContent = msg;
-  document.getElementById('toastContainer').appendChild(el);
-  setTimeout(() => el.remove(), 3800);
-}
-
-// ── Keyframe for shake + slideIn ─────────────────────────────────────────
-const style = document.createElement('style');
-style.textContent = `
-  @keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-6px)}40%,80%{transform:translateX(6px)}}
-  @keyframes slideIn{from{transform:translateX(12px);opacity:0}to{transform:translateX(0);opacity:1}}
-`;
-document.head.appendChild(style);
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/'/g,'&#39;');}
 </script>
 </body>
 </html>

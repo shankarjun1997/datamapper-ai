@@ -3311,8 +3311,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       }).then(r => r.json()).catch(() => null);
       if (_loginR && _loginR.token) {
         localStorage.setItem('xref_auth_token', _loginR.token);
+        localStorage.setItem('xref_user_email', _loginR.email || _cfg.demo_email || 'demo@xref.ai');
         localStorage.setItem('xref_user_role', _loginR.role || 'admin');
         localStorage.setItem('xref_user_tenant', _loginR.tenant || 'demo');
+        localStorage.setItem('xref_user_tenant_name', _loginR.tenant_name || _loginR.tenant || 'Demo');
       }
     } catch (_e) {
       // Server not running — proceed anyway, apiFetch will show "Backend not reachable"
@@ -3348,7 +3350,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // ─── USER IDENTITY WIDGET ──────────────────────────────
 function initUserWidget() {
-  const email  = localStorage.getItem('xref_user_email')  || localStorage.getItem('xref_user_tenant') && 'demo@xref.ai' || 'Guest';
+  const email  = localStorage.getItem('xref_user_email') || 'Guest';
   const role   = localStorage.getItem('xref_user_role')   || 'guest';
   const tenant = localStorage.getItem('xref_user_tenant') || '';
   const tname  = localStorage.getItem('xref_user_tenant_name') || tenant || 'Local';
