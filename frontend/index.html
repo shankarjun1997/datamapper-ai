@@ -2654,8 +2654,8 @@ CREATE TABLE customers (
           <div style="display:flex;gap:20px;flex-wrap:wrap">
             <div><span style="color:var(--text-3);font-size:12px">Schema</span><br>
               <span id="runSchemaInfo" style="font-family:var(--mono);font-size:13px;color:var(--cyan)">Not uploaded</span></div>
-            <div><span style="color:var(--text-3);font-size:12px">Target Schema</span><br>
-              <span id="runBQInfo" style="font-family:var(--mono);font-size:13px;color:var(--cyan)">Not configured</span></div>
+            <div><span style="color:var(--text-3);font-size:12px">Target Schema <span style="color:var(--text-3);font-weight:400">(optional)</span></span><br>
+              <span id="runBQInfo" style="font-family:var(--mono);font-size:13px;color:var(--cyan)">Optional — not set</span></div>
             <div><span style="color:var(--text-3);font-size:12px">LLM Provider</span><br>
               <span id="runProviderInfo" style="font-family:var(--mono);font-size:13px;color:var(--orange)">—</span></div>
           </div>
@@ -2689,8 +2689,8 @@ CREATE TABLE customers (
               <div class="step-meta" id="rstep-L1-meta">Ready</div>
             </div></div>
             <div class="step" id="rstep-L2"><div class="step-icon">2</div><div class="step-body">
-              <div class="step-title">L2 · Target Schema</div>
-              <div class="step-desc">Load target schema from custom files or BigQuery</div>
+              <div class="step-title">L2 · Target Schema <span style="color:var(--text-3);font-weight:400">(optional)</span></div>
+              <div class="step-desc">Load target schema from files or BigQuery — optional; skip to map later</div>
               <div class="step-meta" id="rstep-L2-meta">Waiting…</div>
             </div></div>
             <div class="step" id="rstep-L3"><div class="step-icon">3</div><div class="step-body">
@@ -4564,12 +4564,14 @@ function resetUpload() {
 }
 
 // ─── BQ CONFIG ──────────────────────────────────────────
-async function saveBQConfig() {
+// silent=true is used by the run flow: the target schema is OPTIONAL, so a
+// missing project/dataset must NOT nag or block — just skip saving.
+async function saveBQConfig(silent = false) {
   // Skip BQ config when using non-BQ target modes
   if (_targetMode === 'files' || _targetMode === 'db') {
     return;
   }
-  if (!currentSession) { toast('Create a session first','warn'); return; }
+  if (!currentSession) { if (!silent) toast('Create a session first','warn'); return; }
   const sid = currentSession.id || currentSession.session_id;
   const cfg = {
     project:       document.getElementById('bqProject').value.trim(),
@@ -4577,9 +4579,9 @@ async function saveBQConfig() {
     region:        document.getElementById('bqRegion').value,
     target_tables: document.getElementById('bqFilter').value.trim(),
   };
-  if (!cfg.project || !cfg.dataset) { toast('Project and dataset are required','warn'); return; }
+  if (!cfg.project || !cfg.dataset) { if (!silent) toast('Project and dataset are required','warn'); return; }
   await apiFetch(`/api/sessions/${sid}/bq-config`,'POST',cfg);
-  toast('BQ config saved ✓','ok');
+  if (!silent) toast('BQ config saved ✓','ok');
 }
 
 async function testBQ() {
@@ -5205,8 +5207,8 @@ async function startPipeline() {
   if (l2title) l2title.textContent = lt;
   if (l2desc)  l2desc.textContent  = ld;
 
-  // Save BQ config first (skipped automatically if custom files mode)
-  await saveBQConfig().catch(()=>{});
+  // Target schema is OPTIONAL — save it silently if configured, never block the run.
+  await saveBQConfig(true).catch(()=>{});
 
   document.getElementById('runBtn').disabled  = true;
   document.getElementById('stopBtn').style.display = 'inline-flex';

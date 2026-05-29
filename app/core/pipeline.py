@@ -292,22 +292,29 @@ async def _run_pipeline(session_id: str):
             tgt_filter     = [t.strip() for t in cfg.get("target_tables", "").split(",") if t.strip()]
 
             if not project or not dataset:
-                raise RuntimeError("BQ Project ID and Dataset are required. Configure them in the BQ panel.")
+                # Target schema is OPTIONAL — proceed source-only. Mappings can be
+                # completed once a target is configured.
+                await emit("stage", {"stage": "L2", "status": "done",
+                                      "msg": "No target configured — running source-only (configure a target to map against)"})
+                bq_tables = []
+            else:
+                from app.connectors.bigquery import crawl_bq
+                try:
+                    bq_tables = await asyncio.to_thread(
+                        crawl_bq, project, dataset, gcp_creds, tgt_filter or None, gcp_creds_json
+                    )
+                except Exception as e:
+                    raise RuntimeError(f"BigQuery crawl failed: {e}")
 
-            from app.connectors.bigquery import crawl_bq
-            try:
-                bq_tables = await asyncio.to_thread(
-                    crawl_bq, project, dataset, gcp_creds, tgt_filter or None, gcp_creds_json
-                )
-            except Exception as e:
-                raise RuntimeError(f"BigQuery crawl failed: {e}")
-
-            if not bq_tables:
-                raise RuntimeError(f"No tables found in {project}.{dataset}. Check project/dataset and permissions.")
-
-            total_tgt_cols = sum(len(t["columns"]) for t in bq_tables)
-            await emit("stage", {"stage": "L2", "status": "done",
-                                  "msg": f"Crawled {len(bq_tables)} BQ tables · {total_tgt_cols} target columns"})
+                if not bq_tables:
+                    # Empty target is not fatal — continue source-only.
+                    await emit("stage", {"stage": "L2", "status": "done",
+                                          "msg": f"No tables found in {project}.{dataset} — running source-only"})
+                    bq_tables = []
+                else:
+                    total_tgt_cols = sum(len(t["columns"]) for t in bq_tables)
+                    await emit("stage", {"stage": "L2", "status": "done",
+                                          "msg": f"Crawled {len(bq_tables)} BQ tables · {total_tgt_cols} target columns"})
 
         session["bq_tables"] = bq_tables
         session["l2_done"]   = True
