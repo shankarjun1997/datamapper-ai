@@ -242,14 +242,38 @@ def _migrate_tenant(t: Dict) -> Dict:
         u.setdefault("invited_at", None)
         u.setdefault("last_login", None)
         u.setdefault("display_name", (u.get("email", "") or "user").split("@")[0])
+    # Decrypt vault secrets back to plaintext for in-memory use.
+    secs = t.get("secrets")
+    if isinstance(secs, dict):
+        from app.core.crypto import decrypt_value
+        for _k, v in secs.items():
+            if isinstance(v, dict) and "value" in v:
+                v["value"] = decrypt_value(v["value"])
     return t
+
+
+def _tenants_for_disk() -> list:
+    """Serialisable copy of tenants with vault secret values encrypted at rest.
+    Never mutates the in-memory tenants (secrets stay plaintext in memory)."""
+    from app.core.crypto import encrypt_value
+    out = []
+    for t in _TENANTS.values():
+        tc = dict(t)
+        secs = tc.get("secrets")
+        if isinstance(secs, dict):
+            tc["secrets"] = {
+                k: ({**v, "value": encrypt_value(v.get("value"))} if isinstance(v, dict) else v)
+                for k, v in secs.items()
+            }
+        out.append(tc)
+    return out
 
 
 def _save_tenants() -> None:
     """Persist mutable tenant + user state to disk (best-effort)."""
     try:
         with open(_TENANTS_STORE_PATH, "w") as f:
-            json.dump(list(_TENANTS.values()), f, indent=2)
+            json.dump(_tenants_for_disk(), f, indent=2)
     except Exception as e:
         logger.warning("Failed to save tenants: %s", e)
 

@@ -129,6 +129,10 @@ class ChangePasswordBody(BaseModel):
     new_password: str
 
 
+class ProfileBody(BaseModel):
+    display_name: str
+
+
 class ForgotPasswordBody(BaseModel):
     tenant: str
     email: str
@@ -526,6 +530,26 @@ async def delete_user(email: str, request: Request, _user=Depends(require_admin)
         metadata={"deleted_email": needle},
     )
     return {"ok": True, "deleted": needle, "remaining": len(tenant["users"])}
+
+
+@router.post("/api/auth/profile")
+async def update_profile(body: ProfileBody, request: Request):
+    """Self-service profile update — currently the display name."""
+    user_ctx = get_user_from_request(request)
+    if not user_ctx:
+        raise HTTPException(401, "Authentication required")
+    name = (body.display_name or "").strip()
+    if not name or len(name) > 80:
+        raise HTTPException(422, "Display name must be 1–80 characters")
+    tenant = _TENANTS.get(user_ctx["tenant"])
+    target = _find_user(tenant, user_ctx["email"]) if tenant else None
+    if not target:
+        raise HTTPException(404, "User record missing — re-login")
+    target["display_name"] = name
+    _save_tenants()
+    _write_audit_event("auth.profile_updated", tenant=user_ctx["tenant"],
+                       email=user_ctx["email"], ip=_get_client_ip(request))
+    return {"ok": True, "display_name": name}
 
 
 @router.post("/api/auth/change-password")
