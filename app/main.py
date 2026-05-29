@@ -48,7 +48,7 @@ from app.state import (
 import app.state as _state
 
 # ── Routers ───────────────────────────────────────────────────────────────────
-from app.routers import auth, sessions, schema, pipeline, mappings, exports, admin, providers, workspace, migration
+from app.routers import auth, sessions, schema, pipeline, mappings, exports, admin, providers, workspace, migration, metadata
 
 
 # ── Request-scoped context (used by JSON formatter) ───────────────────────────
@@ -422,6 +422,7 @@ app.include_router(admin.router)
 app.include_router(providers.router)
 app.include_router(workspace.router)
 app.include_router(migration.router)
+app.include_router(metadata.router)
 
 
 if __name__ == "__main__":
