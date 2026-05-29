@@ -10,7 +10,7 @@
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='20%25' y1='0%25' x2='80%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%234d90ff'/%3E%3Cstop offset='50%25' stop-color='%232955d4'/%3E%3Cstop offset='100%25' stop-color='%231a34a8'/%3E%3C/linearGradient%3E%3CclipPath id='c'%3E%3Cpolygon points='50,8 92,88 8,88'/%3E%3C/clipPath%3E%3C/defs%3E%3Cpolygon points='50,8 92,88 8,88' fill='url(%23g)'/%3E%3Cg clip-path='url(%23c)' opacity='0.95'%3E%3Cline x1='22' y1='95' x2='58' y2='5' stroke='%230fd4b0' stroke-width='5.5' stroke-linecap='round'/%3E%3Cline x1='34' y1='95' x2='70' y2='5' stroke='%230fd4b0' stroke-width='5.5' stroke-linecap='round'/%3E%3Cline x1='46' y1='95' x2='82' y2='5' stroke='%230fd4b0' stroke-width='5.5' stroke-linecap='round'/%3E%3Cline x1='58' y1='95' x2='94' y2='5' stroke='%230fd4b0' stroke-width='5.5' stroke-linecap='round'/%3E%3C/g%3E%3Cellipse cx='50' cy='52' rx='46' ry='22' fill='none' stroke='%230fd4b0' stroke-width='3.5' opacity='0.9' transform='rotate(-18 50 52)'/%3E%3C/svg%3E">
 <!-- Anti-flash: restore theme before first paint -->
 <script>
-(function(){var DARK=['default','executive'];var t=localStorage.getItem('dm_theme');if(DARK.indexOf(t)===-1){t='default';try{localStorage.setItem('dm_theme','default');}catch(e){}}if(t!=='default')document.documentElement.setAttribute('data-theme',t);else document.documentElement.removeAttribute('data-theme');})();
+(function(){var t=localStorage.getItem('dm_theme');if(t&&t!=='default')document.documentElement.setAttribute('data-theme',t);else document.documentElement.removeAttribute('data-theme');})();
 </script>
 <!-- API URL injected at build time by build.sh (Cloudflare Pages / Vercel).
      For local dev this tag is absent and the fallback in JS applies. -->
@@ -68,7 +68,9 @@ html{scroll-behavior:smooth}
   --line-2:       var(--border-2);
   --accent:       var(--cyan);
   --accent-d:     var(--cyan-d);
-  --accent-soft:  rgba(0,212,255,.14);
+  /* accent-soft + ring derive from --accent, so they auto-follow ANY theme's
+     accent (cyan, gold, blue, indigo…) — one definition, every theme. */
+  --accent-soft:  color-mix(in srgb, var(--accent) 14%, transparent);
   --success:      var(--green);
   --warning:      var(--yellow);
   --danger:       var(--red);
@@ -76,13 +78,10 @@ html{scroll-behavior:smooth}
   --radius:       12px;
   --radius-sm:    8px;
   --radius-pill:  999px;
-  --ring:         0 0 0 3px rgba(0,212,255,.20);
+  --ring:         0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
   --elev-1:       var(--shadow-card);
   --elev-2:       0 24px 64px rgba(0,0,0,.6);
 }
-
-/* Accent-soft + ring follow the active dark accent (gold for executive). */
-[data-theme="executive"] { --accent-soft: rgba(245,158,11,.14); --ring: 0 0 0 3px rgba(245,158,11,.22); }
 
 /* ── Modular themed primitives ───────────────────────────── */
 .ui-overlay{position:fixed;inset:0;background:rgba(3,6,15,.62);backdrop-filter:blur(6px);
@@ -1834,6 +1833,12 @@ select.cell-edit{
           <option value="default">🎮 Default</option>
           <option value="executive">💼 Executive</option>
         </optgroup>
+        <optgroup label="White">
+          <option value="daylight">☀ Daylight</option>
+          <option value="stakeholder">📊 Corporate</option>
+          <option value="slate">🔷 Slate</option>
+          <option value="paper">📄 Paper</option>
+        </optgroup>
       </select>
     </div>
   </div>
@@ -1853,6 +1858,12 @@ select.cell-edit{
       <optgroup label="Dark">
         <option value="default">🎮 Default</option>
         <option value="executive">💼 Executive</option>
+      </optgroup>
+      <optgroup label="White">
+        <option value="daylight">☀ Daylight</option>
+        <option value="stakeholder">📊 Corporate</option>
+        <option value="slate">🔷 Slate</option>
+        <option value="paper">📄 Paper</option>
       </optgroup>
     </select>
 
@@ -7024,13 +7035,17 @@ async function goToBQ() {
 
 const THEMES = {
   // ── Dark ──────────────────────────────────────────────
-  default:     { label:'🎮 Default',     desc:'Dark — cyan accent',              accent:'#00d4ff' },
-  executive:   { label:'💼 Executive',   desc:'Dark monochrome — gold accent',   accent:'#f59e0b' },
+  // ── Dark ──────────────────────────────────────────────
+  default:     { label:'🎮 Default',     desc:'Dark — cyan accent',                    accent:'#00d4ff' },
+  executive:   { label:'💼 Executive',   desc:'Dark monochrome — gold accent',         accent:'#f59e0b' },
+  // ── White / Light ─────────────────────────────────────
+  daylight:    { label:'☀ Daylight',    desc:'Pure white — clean, Material-inspired', accent:'#1a73e8' },
+  stakeholder: { label:'📊 Corporate',   desc:'Crisp white — boardroom / Salesforce',  accent:'#2563eb' },
+  slate:       { label:'🔷 Slate',      desc:'Cool blue-gray white — Linear / Notion',accent:'#6366f1' },
+  paper:       { label:'📄 Paper',      desc:'Warm cream white — editorial',          accent:'#0369a1' },
 };
 
 function setTheme(name) {
-  // Collapsed to a single consistent dark system — coerce any legacy light theme.
-  if (['default', 'executive'].indexOf(name) === -1) name = 'default';
   if (!THEMES[name]) return;
 
   // Apply data-theme attribute to <html>
