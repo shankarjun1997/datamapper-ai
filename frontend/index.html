@@ -2207,7 +2207,7 @@ select.cell-edit{
                 <span class="badge badge-gray">CSV</span>
               </div>
             </div>
-            <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none" onchange="handleFileSelect(this.files[0])">
+            <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="handleFiles(this.files)">
           </div>
         </div>
       </div>
@@ -2977,12 +2977,15 @@ CREATE TABLE customers (
 
       <!-- Deliverables -->
       <div class="grid-3" style="margin-bottom:16px">
-        <div class="card" style="cursor:pointer" onclick="exportCSV()">
+        <div class="card">
           <div class="card-body" style="text-align:center;padding:26px 18px">
             <div style="font-size:32px;margin-bottom:8px">📄</div>
-            <div style="font-size:15px;font-weight:700;margin-bottom:6px">STM CSV</div>
-            <div style="font-size:12px;color:var(--text-2);margin-bottom:16px">Source-to-target spec. Feed any ETL / orchestration tool (dbt, Airflow, Glue).</div>
-            <button class="btn btn-ghost btn-sm">⬇ Download CSV</button>
+            <div style="font-size:15px;font-weight:700;margin-bottom:6px">Mapping CSV</div>
+            <div style="font-size:12px;color:var(--text-2);margin-bottom:16px">Source-to-target spec for your ETL — download column-level or table-level separately.</div>
+            <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+              <button class="btn btn-ghost btn-sm" onclick="exportCSV()">⬇ Column mapping</button>
+              <button class="btn btn-ghost btn-sm" onclick="exportTableMappings()">⬇ Table mapping</button>
+            </div>
           </div>
         </div>
         <div class="card">
@@ -4492,48 +4495,67 @@ function statusBadgeClass(s) {
 // ─── SCHEMA UPLOAD ──────────────────────────────────────
 function dz_dragover(e) { e.preventDefault(); document.getElementById('dropzone').classList.add('drag-over'); }
 function dz_dragleave()  { document.getElementById('dropzone').classList.remove('drag-over'); }
-function dz_drop(e)      { e.preventDefault(); dz_dragleave(); const f = e.dataTransfer.files[0]; if(f) handleFileSelect(f); }
+function dz_drop(e)      { e.preventDefault(); dz_dragleave(); if(e.dataTransfer.files && e.dataTransfer.files.length) handleFiles(e.dataTransfer.files); }
 
-async function handleFileSelect(file) {
-  if (!file) return;
-  document.getElementById('dzTitle').textContent = `Uploading ${file.name}…`;
-  try {
-    if (!currentSession) await newSession();
+function _uploadHeaders() {
+  // multipart upload bypasses apiFetch, so attach auth + CSRF here.
+  const h = {};
+  const tok = localStorage.getItem('xref_auth_token');
+  if (tok) h['Authorization'] = 'Bearer ' + tok;
+  const csrf = (typeof _getCookie === 'function') ? _getCookie('xref_csrf') : '';
+  if (csrf) h['X-CSRF-Token'] = csrf;
+  return h;
+}
 
-    const sid = currentSession.id || currentSession.session_id;
-    const fd  = new FormData();
+// Add one or many schema files. Repeated calls MERGE into the session schema
+// (append=true once a schema already exists), so clients can keep adding CSVs.
+async function handleFiles(files) {
+  if (!files || !files.length) return;
+  if (!currentSession) await newSession();
+  const sid = currentSession.id || currentSession.session_id;
+  let last = null;
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    document.getElementById('dzTitle').textContent = `Uploading ${file.name}…`;
+    const fd = new FormData();
     fd.append('file', file);
-
-    let r;
+    // append if a schema already exists (from a prior upload) or this isn't the first in the batch
+    const append = !!currentSession.filename || i > 0;
     try {
-      const resp = await fetch(`${API}/api/sessions/${sid}/upload`, {method:'POST', body:fd});
-      r = await resp.json();
-    } catch(netErr) {
+      const resp = await fetch(`${API}/api/sessions/${sid}/upload?append=${append}`,
+        { method: 'POST', body: fd, credentials: 'include', headers: _uploadHeaders() });
+      last = await resp.json();
+    } catch (netErr) {
       setBackendStatus(false);
-      throw new Error('Backend not reachable — open a terminal and run: bash demo.sh');
+      toast('Backend not reachable — run ./run.sh', 'error');
+      return;
     }
-    if (r.detail) throw new Error(r.detail);
-
-    document.getElementById('dropzone').style.display      = 'none';
-    document.getElementById('nextToBQ').disabled           = false;
-
-    currentSession.filename = file.name;
-    currentSession.status   = 'schema_uploaded';
-    updateSessionUI();
-    toast(`Parsed ${r.columns} columns from ${file.name}`,'success');
-
-    // Render source tree from upload response schema
-    if (r.schema) {
-      renderSrcTree(r.schema, file.name, `${r.tables} tables`);
-    } else if (r.preview) {
-      // Fallback: treat all preview columns as single table
-      renderSrcTree([{name: file.name, columns: r.preview}], file.name, `${r.columns} cols`);
+    if (last && last.detail) { toast('Upload failed: ' + last.detail, 'error'); continue; }
+    if (last && last.added) {
+      currentSession.filename = (last.files && last.files[last.files.length - 1]) || file.name;
     }
-  } catch(e) {
-    document.getElementById('dzTitle').textContent = 'Drop your schema file here';
-    toast('Upload failed: '+e,'error');
+  }
+  if (!last || !last.ok) return;
+
+  currentSession.status = 'schema_uploaded';
+  document.getElementById('nextToBQ').disabled = false;
+  updateSessionUI();
+
+  // Keep the dropzone available so more files can be added.
+  document.getElementById('dzTitle').textContent = 'Add another CSV (drag or click)';
+  const fi = document.getElementById('fileInput'); if (fi) fi.value = '';
+
+  const fileList = last.files || [];
+  toast(`Schema: ${last.tables} tables · ${last.columns} columns (${fileList.length} file${fileList.length !== 1 ? 's' : ''})`, 'success');
+  if (last.schema) {
+    renderSrcTree(last.schema, fileList.join(', ') || currentSession.filename,
+                  `${last.tables} tables · ${fileList.length} file(s)`);
   }
 }
+
+// Back-compat single-file entry point.
+async function handleFileSelect(file) { return handleFiles(file ? [file] : []); }
 
 function resetUpload() {
   document.getElementById('dropzone').style.display      = 'block';
@@ -6087,6 +6109,12 @@ function exportCSV() {
   if (!currentSession) { toast('No active session','warn'); return; }
   const sid = currentSession.id || currentSession.session_id;
   window.open(`${API}/api/sessions/${sid}/export/csv`,'_blank');
+}
+
+function exportTableMappings() {
+  if (!currentSession) { toast('No active session','warn'); return; }
+  const sid = currentSession.id || currentSession.session_id;
+  window.open(`${API}/api/sessions/${sid}/export/table-mappings`,'_blank');
 }
 
 function exportSQL() {

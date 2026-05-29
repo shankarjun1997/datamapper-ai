@@ -28,31 +28,73 @@ router = APIRouter(dependencies=[Depends(require_mapper)])
 
 
 @router.post("/api/sessions/{sid}/upload")
-async def upload_schema(sid: str, request: Request, file: UploadFile = File(...)):
+async def upload_schema(sid: str, request: Request, file: UploadFile = File(...),
+                        append: bool = False):
+    """Upload a CSV/DDL/Excel schema. With ?append=true the parsed tables are
+    MERGED into the session's existing schema (so clients can add multiple CSVs
+    repeatedly); otherwise they replace it."""
     if not _check_rate_limit(_get_client_ip(request)):
         raise HTTPException(429, "Too many requests — slow down")
     s = _session_or_404(sid)
     content = await file.read()
     safe_name = _validate_upload(file.filename or "upload.csv", content)
     try:
-        schema_data = parse_schema_file(content, safe_name)
+        parsed = parse_schema_file(content, safe_name)
     except Exception as e:
         raise HTTPException(422, str(e))
+
+    from app.intelligence.insights import merge_schemas
+    existing = s.get("schema_data") if append else None
+    schema_data = merge_schemas(existing, parsed) if (existing and existing.get("tables")) else parsed
     s["schema_data"] = schema_data
     s["filename"]    = safe_name
     s["status"]      = "schema_uploaded"
+
+    # Track each contributing source file for the UI.
+    added_cols = sum(len(t["columns"]) for t in parsed["tables"])
+    files = s.setdefault("source_files", [])
+    files.append({"name": safe_name,
+                  "tables": [t["name"] for t in parsed["tables"]],
+                  "columns": added_cols})
+
     total = sum(len(t["columns"]) for t in schema_data["tables"])
     _write_audit_event("schema.uploaded", tenant=s.get("tenant"), session_id=sid,
                        ip=_get_client_ip(request),
-                       metadata={"filename": safe_name, "tables": len(schema_data["tables"]), "columns": total})
+                       metadata={"filename": safe_name, "append": append,
+                                 "tables": len(schema_data["tables"]), "columns": total})
     return {
         "ok":          True,
+        "appended":    bool(existing and existing.get("tables")),
+        "added":       {"file": safe_name, "tables": [t["name"] for t in parsed["tables"]], "columns": added_cols},
+        "files":       [f["name"] for f in files],
         "tables":      len(schema_data["tables"]),
         "columns":     total,
         "preview":     schema_data["tables"][0]["columns"][:8] if schema_data["tables"] else [],
         "table_names": [t["name"] for t in schema_data["tables"]],
         "schema":      schema_data["tables"],
     }
+
+
+@router.get("/api/sessions/{sid}/schema-insight")
+async def schema_insight(sid: str):
+    """Quick few-word characterization of the session's discovered schema."""
+    from app.intelligence.insights import summarize_schema
+    s = _session_or_404(sid)
+    return summarize_schema(s.get("schema_data") or {}, name=s.get("filename", ""))
+
+
+class DatasetInsightRequest(BaseModel):
+    tables: list = []
+    name:   Optional[str] = ""
+
+
+@router.post("/api/sessions/{sid}/dataset-insight")
+async def dataset_insight(sid: str, req: DatasetInsightRequest):
+    """Quick insight for an arbitrary dataset (e.g. a cloud dataset being
+    browsed before import). Accepts a tables[] payload."""
+    from app.intelligence.insights import summarize_schema
+    _session_or_404(sid)
+    return summarize_schema({"tables": req.tables}, name=req.name or "")
 
 
 class JiraContextRequest(BaseModel):
