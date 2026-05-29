@@ -10,7 +10,7 @@
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='20%25' y1='0%25' x2='80%25' y2='100%25'%3E%3Cstop offset='0%25' stop-color='%234d90ff'/%3E%3Cstop offset='50%25' stop-color='%232955d4'/%3E%3Cstop offset='100%25' stop-color='%231a34a8'/%3E%3C/linearGradient%3E%3CclipPath id='c'%3E%3Cpolygon points='50,8 92,88 8,88'/%3E%3C/clipPath%3E%3C/defs%3E%3Cpolygon points='50,8 92,88 8,88' fill='url(%23g)'/%3E%3Cg clip-path='url(%23c)' opacity='0.95'%3E%3Cline x1='22' y1='95' x2='58' y2='5' stroke='%230fd4b0' stroke-width='5.5' stroke-linecap='round'/%3E%3Cline x1='34' y1='95' x2='70' y2='5' stroke='%230fd4b0' stroke-width='5.5' stroke-linecap='round'/%3E%3Cline x1='46' y1='95' x2='82' y2='5' stroke='%230fd4b0' stroke-width='5.5' stroke-linecap='round'/%3E%3Cline x1='58' y1='95' x2='94' y2='5' stroke='%230fd4b0' stroke-width='5.5' stroke-linecap='round'/%3E%3C/g%3E%3Cellipse cx='50' cy='52' rx='46' ry='22' fill='none' stroke='%230fd4b0' stroke-width='3.5' opacity='0.9' transform='rotate(-18 50 52)'/%3E%3C/svg%3E">
 <!-- Anti-flash: restore theme before first paint -->
 <script>
-(function(){var t=localStorage.getItem('dm_theme');if(t&&t!=='default')document.documentElement.setAttribute('data-theme',t);})();
+(function(){var DARK=['default','executive'];var t=localStorage.getItem('dm_theme');if(DARK.indexOf(t)===-1){t='default';try{localStorage.setItem('dm_theme','default');}catch(e){}}if(t!=='default')document.documentElement.setAttribute('data-theme',t);else document.documentElement.removeAttribute('data-theme');})();
 </script>
 <!-- API URL injected at build time by build.sh (Cloudflare Pages / Vercel).
      For local dev this tag is absent and the fallback in JS applies. -->
@@ -50,7 +50,61 @@ html{scroll-behavior:smooth}
   --glow-orange: 0 0 18px rgba(249,115,22,.35);
   --glow-green:  0 0 18px rgba(16,185,129,.35);
   --shadow-card: 0 4px 24px rgba(0,0,0,.5);
+
+  /* ── Semantic token layer (modular) ──────────────────────
+     Components reference these, not raw colors. Because they
+     map onto the raw --bg/--text/--accent vars, every dark
+     theme (default, executive) inherits a consistent surface,
+     content, accent, status, radius, ring and elevation scale. */
+  --surface-0:    var(--bg-0);
+  --surface-1:    var(--bg-1);
+  --surface-2:    var(--bg-2);
+  --surface-3:    var(--bg-3);
+  --surface-hover:var(--bg-4);
+  --content-1:    var(--text-1);
+  --content-2:    var(--text-2);
+  --content-3:    var(--text-3);
+  --line-1:       var(--border);
+  --line-2:       var(--border-2);
+  --accent:       var(--cyan);
+  --accent-d:     var(--cyan-d);
+  --accent-soft:  rgba(0,212,255,.14);
+  --success:      var(--green);
+  --warning:      var(--yellow);
+  --danger:       var(--red);
+  --info:         var(--cyan);
+  --radius:       12px;
+  --radius-sm:    8px;
+  --radius-pill:  999px;
+  --ring:         0 0 0 3px rgba(0,212,255,.20);
+  --elev-1:       var(--shadow-card);
+  --elev-2:       0 24px 64px rgba(0,0,0,.6);
 }
+
+/* Accent-soft + ring follow the active dark accent (gold for executive). */
+[data-theme="executive"] { --accent-soft: rgba(245,158,11,.14); --ring: 0 0 0 3px rgba(245,158,11,.22); }
+
+/* ── Modular themed primitives ───────────────────────────── */
+.ui-overlay{position:fixed;inset:0;background:rgba(3,6,15,.62);backdrop-filter:blur(6px);
+  z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px;
+  animation:uiFade .16s ease}
+@keyframes uiFade{from{opacity:0}to{opacity:1}}
+.ui-modal{background:var(--surface-2);border:1px solid var(--line-2);border-radius:var(--radius);
+  padding:22px;max-width:440px;width:100%;box-shadow:var(--elev-2);color:var(--content-1);
+  animation:uiPop .18s cubic-bezier(.3,1.2,.5,1)}
+@keyframes uiPop{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:none}}
+.ui-modal__head{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+.ui-modal__title{font-size:15px;font-weight:700;color:var(--content-1)}
+.ui-modal__x{background:none;border:none;color:var(--content-3);cursor:pointer;font-size:20px;
+  line-height:1;padding:2px 4px;border-radius:6px}
+.ui-modal__x:hover{color:var(--content-1);background:var(--surface-3)}
+.ui-modal__foot{display:flex;gap:8px;justify-content:flex-end;margin-top:18px}
+.ui-btn{padding:8px 16px;border-radius:var(--radius-sm);font-size:12px;font-weight:600;cursor:pointer;
+  border:1px solid var(--line-2);background:var(--surface-3);color:var(--content-1);transition:.15s}
+.ui-btn:hover{border-color:var(--accent)}
+.ui-btn--primary{border-color:transparent;background:var(--accent);color:#04131b}
+.ui-btn--primary:hover{box-shadow:var(--ring)}
+.ui-surface{background:var(--surface-3);border:1px solid var(--line-1);border-radius:var(--radius-sm)}
 
 /* ═══════════════════════════════════════════════════════
    EXECUTIVE THEME — Dark monochrome + gold
@@ -1780,12 +1834,6 @@ select.cell-edit{
           <option value="default">🎮 Default</option>
           <option value="executive">💼 Executive</option>
         </optgroup>
-        <optgroup label="Light">
-          <option value="stakeholder">📊 Stakeholder</option>
-          <option value="daylight">☀ Daylight</option>
-          <option value="slate">🔷 Slate</option>
-          <option value="paper">📄 Paper</option>
-        </optgroup>
       </select>
     </div>
   </div>
@@ -1805,12 +1853,6 @@ select.cell-edit{
       <optgroup label="Dark">
         <option value="default">🎮 Default</option>
         <option value="executive">💼 Executive</option>
-      </optgroup>
-      <optgroup label="Light">
-        <option value="stakeholder">📊 Stakeholder</option>
-        <option value="daylight">☀ Daylight</option>
-        <option value="slate">🔷 Slate</option>
-        <option value="paper">📄 Paper</option>
       </optgroup>
     </select>
 
@@ -3846,23 +3888,25 @@ function showModal({ title, html, actions = [] }) {
   if (existing) existing.remove();
   const overlay = document.createElement('div');
   overlay.id = '_xrefGenericModal';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;padding:24px';
+  overlay.className = 'ui-overlay';
   overlay.innerHTML = `
-    <div style="background:var(--bg-2);border:1px solid var(--border-2);border-radius:14px;padding:24px;max-width:420px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.7)">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
-        <h3 style="font-size:14px;font-weight:700;color:var(--text-1)">${title}</h3>
-        <button onclick="document.getElementById('_xrefGenericModal').remove()"
-          style="background:none;border:none;color:var(--text-3);cursor:pointer;font-size:20px;line-height:1;padding:0 2px">&times;</button>
+    <div class="ui-modal" role="dialog" aria-modal="true" aria-label="${title}">
+      <div class="ui-modal__head">
+        <h3 class="ui-modal__title">${title}</h3>
+        <button class="ui-modal__x" aria-label="Close"
+          onclick="document.getElementById('_xrefGenericModal').remove()">&times;</button>
       </div>
       <div>${html}</div>
-      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:18px">
-        ${actions.map(a => `<button onclick="document.getElementById('_xrefGenericModal').remove();${a.fn}"
-          style="padding:7px 18px;border-radius:7px;font-size:12px;font-weight:600;cursor:pointer;border:1px solid ${a.primary ? 'transparent' : 'var(--border-2)'};
-          background:${a.primary ? 'var(--cyan)' : 'var(--bg-3)'};color:${a.primary ? '#000' : 'var(--text-1)'}">${a.label}</button>`).join('')}
+      <div class="ui-modal__foot">
+        ${actions.map(a => `<button class="ui-btn ${a.primary ? 'ui-btn--primary' : ''}"
+          onclick="document.getElementById('_xrefGenericModal').remove();${a.fn}">${a.label}</button>`).join('')}
       </div>
     </div>`;
   document.body.appendChild(overlay);
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+  // Esc closes; restore focus trap-lite.
+  const onKey = (e) => { if (e.key === 'Escape') { overlay.remove(); document.removeEventListener('keydown', onKey); } };
+  document.addEventListener('keydown', onKey);
 }
 
 function toggleUserDropdown(source) {
@@ -6980,16 +7024,13 @@ async function goToBQ() {
 
 const THEMES = {
   // ── Dark ──────────────────────────────────────────────
-  default:     { label:'🎮 Default',     desc:'Dark gaming / cyberpunk',              accent:'#00d4ff' },
-  executive:   { label:'💼 Executive',   desc:'Dark monochrome gold — Bloomberg',      accent:'#f59e0b' },
-  // ── Light ─────────────────────────────────────────────
-  stakeholder: { label:'📊 Stakeholder', desc:'Light corporate — Salesforce clarity',  accent:'#2563eb' },
-  daylight:    { label:'☀ Daylight',    desc:'Clean white — Google-inspired minimal', accent:'#1a73e8' },
-  slate:       { label:'🔷 Slate',      desc:'Blue-gray SaaS — Linear / Notion feel', accent:'#6366f1' },
-  paper:       { label:'📄 Paper',      desc:'Warm cream — editorial, refined warmth', accent:'#0369a1' },
+  default:     { label:'🎮 Default',     desc:'Dark — cyan accent',              accent:'#00d4ff' },
+  executive:   { label:'💼 Executive',   desc:'Dark monochrome — gold accent',   accent:'#f59e0b' },
 };
 
 function setTheme(name) {
+  // Collapsed to a single consistent dark system — coerce any legacy light theme.
+  if (['default', 'executive'].indexOf(name) === -1) name = 'default';
   if (!THEMES[name]) return;
 
   // Apply data-theme attribute to <html>
