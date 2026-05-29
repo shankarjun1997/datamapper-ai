@@ -2948,11 +2948,11 @@ CREATE TABLE customers (
   <!-- ── VIEW: EXPORT ───────────────────── -->
   <div class="view" id="view-export">
     <div class="section-head">
-      <div class="section-title">⑤ Export &amp; Code Generation</div>
-      <div class="section-sub">Export the approved mapping as CSV or materialized BigQuery SQL.</div>
+      <div class="section-title">⑤ Export &amp; Sign-off</div>
+      <div class="section-sub">Produce the decision artifacts to approve this migration — spec, report, certificate, and a CAB-ready bundle.</div>
     </div>
 
-    <div style="max-width:720px">
+    <div style="max-width:920px">
 
       <!-- Session Intelligence card -->
       <div class="card" style="margin-bottom:24px">
@@ -2975,77 +2975,62 @@ CREATE TABLE customers (
         </div>
       </div>
 
-      <div class="grid-3" style="margin-bottom:24px">
+      <!-- Deliverables -->
+      <div class="grid-3" style="margin-bottom:16px">
         <div class="card" style="cursor:pointer" onclick="exportCSV()">
-          <div class="card-body" style="text-align:center;padding:28px 18px">
-            <div style="font-size:36px;margin-bottom:10px">📄</div>
+          <div class="card-body" style="text-align:center;padding:26px 18px">
+            <div style="font-size:32px;margin-bottom:8px">📄</div>
             <div style="font-size:15px;font-weight:700;margin-bottom:6px">STM CSV</div>
-            <div style="font-size:12px;color:var(--text-2);margin-bottom:16px">Source-to-target flat file. Compatible with any ETL tool.</div>
+            <div style="font-size:12px;color:var(--text-2);margin-bottom:16px">Source-to-target spec. Feed any ETL / orchestration tool (dbt, Airflow, Glue).</div>
             <button class="btn btn-ghost btn-sm">⬇ Download CSV</button>
           </div>
         </div>
-        <div class="card" style="cursor:pointer;border-color:rgba(249,115,22,.3)" onclick="exportSQL()">
-          <div class="card-body" style="text-align:center;padding:28px 18px">
-            <div style="font-size:36px;margin-bottom:10px">⚙</div>
-            <div style="font-size:15px;font-weight:700;margin-bottom:6px">BQ Materialized SQL</div>
-            <div style="font-size:12px;color:var(--text-2);margin-bottom:16px">CREATE OR REPLACE TABLE with proper BQ naming & audit columns.</div>
-            <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-              <button class="btn btn-orange btn-sm">⬇ Download SQL</button>
-              <button class="btn btn-ghost btn-sm" onclick="event.stopPropagation();downloadSqlZip()" title="One .sql file per target table + README">🗜 Download ZIP</button>
-            </div>
-          </div>
-        </div>
         <div class="card">
-          <div class="card-body" style="text-align:center;padding:28px 18px">
-            <div style="font-size:36px;margin-bottom:10px">📊</div>
-            <div style="font-size:15px;font-weight:700;margin-bottom:6px">XLSX Report</div>
-            <div style="font-size:12px;color:var(--text-2);margin-bottom:16px">Full mapping with confidence scores &amp; provenance metadata sheet.</div>
-            <button class="btn btn-green btn-sm" onclick="exportXLSX()">⬇ Download XLSX</button>
+          <div class="card-body" style="text-align:center;padding:26px 18px">
+            <div style="font-size:32px;margin-bottom:8px">📊</div>
+            <div style="font-size:15px;font-weight:700;margin-bottom:6px">Mapping Report</div>
+            <div style="font-size:12px;color:var(--text-2);margin-bottom:16px">Readiness, risks, full spec &amp; governance — shareable.</div>
+            <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+              <button class="btn btn-cyan btn-sm" onclick="openReport()">↗ Open HTML</button>
+              <button class="btn btn-green btn-sm" onclick="exportXLSX()">⬇ XLSX</button>
+            </div>
+          </div>
+        </div>
+        <div class="card" style="cursor:pointer" onclick="downloadCertificate()">
+          <div class="card-body" style="text-align:center;padding:26px 18px">
+            <div style="font-size:32px;margin-bottom:8px">🏅</div>
+            <div style="font-size:15px;font-weight:700;margin-bottom:6px">Readiness Certificate</div>
+            <div style="font-size:12px;color:var(--text-2);margin-bottom:16px">One-page sign-off PDF with a SHA-256 verification hash.</div>
+            <button class="btn btn-ghost btn-sm">⬇ Download PDF</button>
           </div>
         </div>
       </div>
 
-      <!-- SQL Importance Panel -->
-      <div class="card" style="margin-bottom:20px;border-color:rgba(249,115,22,.25)">
-        <div class="card-header">
-          <span class="card-icon">📋</span>
-          <span class="card-title">What this SQL does &amp; why it matters</span>
-        </div>
-        <div class="card-body" style="font-size:13px;line-height:1.7;color:var(--text-2)">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-            <div>
-              <div style="font-weight:600;color:var(--orange);margin-bottom:6px">🏗 What it creates</div>
-              <p>A <code style="color:var(--cyan)">CREATE OR REPLACE TABLE</code> statement that materializes your source data into the BigQuery target schema. Each run is idempotent — it replaces the table completely, making it safe for scheduled jobs and re-runs.</p>
-            </div>
-            <div>
-              <div style="font-weight:600;color:var(--cyan);margin-bottom:6px">🔑 Audit columns included</div>
-              <p><code style="color:var(--orange)">_loaded_at</code> — load timestamp for lineage tracking<br>
-              <code style="color:var(--orange)">_source_run_id</code> — unique run ID for traceability<br>
-              <code style="color:var(--orange)">_row_rank</code> — deduplication rank per primary key</p>
-            </div>
-            <div>
-              <div style="font-weight:600;color:var(--green);margin-bottom:6px">⚙ How to use it</div>
-              <p>Run directly in BigQuery console or schedule via Cloud Composer / dbt. Copy into your pipeline's SQL file, replace <code>project.dataset</code> with your actual values, then execute. Grant the service account <code>bigquery.dataEditor</code> on the target dataset.</p>
-            </div>
-            <div>
-              <div style="font-weight:600;color:var(--text-1);margin-bottom:6px">⚠ Before running</div>
-              <p>Verify all <span style="color:var(--orange)">CAST()</span> expressions match actual data formats. Check <span style="color:var(--orange)">DERIVE</span> and <span style="color:var(--orange)">LOOKUP</span> columns — they may need join tables to exist first. Review <code>_row_rank</code> partition key matches your dedup logic.</p>
-            </div>
+      <!-- Change-Management Bundle (hero) -->
+      <div class="card" style="margin-bottom:18px;border-color:var(--accent)">
+        <div class="card-body" style="display:flex;align-items:center;gap:18px;flex-wrap:wrap">
+          <div style="font-size:34px">🗂</div>
+          <div style="flex:1;min-width:240px">
+            <div style="font-size:15px;font-weight:700">Change-Management Bundle</div>
+            <div style="font-size:12.5px;color:var(--text-2);line-height:1.6">Everything an architect hands to the Change Advisory Board — report (HTML + XLSX), STM CSV, readiness certificate, audit log &amp; lineage — in one ZIP.</div>
           </div>
+          <button class="btn btn-primary" onclick="downloadBundle()">⬇ Export Bundle (ZIP)</button>
         </div>
       </div>
 
-      <!-- SQL Preview -->
+      <!-- Advanced: legacy raw SQL (deprecated) -->
       <div class="card">
-        <div class="code-header">
-          <span style="font-family:var(--mono);font-size:12px;color:var(--text-2)" id="sqlFilename">stm_session.sql</span>
-          <span style="flex:1"></span>
-          <button class="btn btn-ghost btn-sm" onclick="copySql()">⧉ Copy</button>
-          <button class="btn btn-ghost btn-sm" onclick="downloadSqlZip()" title="Download one .sql per target table as ZIP">🗜 ZIP</button>
-          <button class="btn btn-orange btn-sm" onclick="exportSQL()">⬇ Download</button>
+        <div class="collapsible-header" style="padding:14px 16px"
+          onclick="var b=this.nextElementSibling;var o=b.style.display==='block';b.style.display=o?'none':'block';this.querySelector('.chev').textContent=o?'▸':'▾'">
+          <span class="chev">▸</span> Advanced — raw SQL (legacy)
+          <span style="font-size:10px;font-weight:600;color:var(--text-3);border:1px solid var(--border-2);border-radius:10px;padding:1px 8px;margin-left:8px">deprecated</span>
         </div>
-        <div class="code-block" id="sqlPreview" style="border-radius:0 0 12px 12px;min-height:200px;max-height:580px;overflow:auto;padding:0">
-          <pre style="margin:0;padding:18px;font-family:var(--mono);font-size:12.5px;line-height:1.7;white-space:pre;tab-size:4"><span style="color:var(--text-3)">-- SQL will appear here after Gate 2 approval and SQL generation…</span></pre>
+        <div style="display:none;padding:0 16px 16px">
+          <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin-bottom:12px">Raw <code style="color:var(--accent)">CREATE OR REPLACE TABLE</code> DDL. We recommend the <b>Mapping Report</b> + <b>STM CSV</b> instead — feed the spec into your own ETL (dbt / Airflow / Glue) rather than executing generated SQL, which can't encode incremental loads, CDC, or partitioning.</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-ghost btn-sm" onclick="exportSQL()">⬇ Download .sql</button>
+            <button class="btn btn-ghost btn-sm" onclick="downloadSqlZip()">🗜 Download ZIP</button>
+          </div>
         </div>
       </div>
     </div>
@@ -6113,7 +6098,26 @@ function exportSQL() {
 function exportXLSX() {
   if (!currentSession) { toast('No active session','warn'); return; }
   const sid = currentSession.id || currentSession.session_id;
-  window.open(`${API}/api/sessions/${sid}/export/xlsx`,'_blank');
+  window.open(`${API}/api/sessions/${sid}/report.xlsx`,'_blank');
+}
+
+// New deliverables (Mapping Report / Certificate / Bundle)
+function openReport() {
+  if (!currentSession) { toast('No active session','warn'); return; }
+  const sid = currentSession.id || currentSession.session_id;
+  window.open(`${API}/api/sessions/${sid}/report.html`,'_blank');
+}
+function downloadCertificate() {
+  if (!currentSession) { toast('No active session','warn'); return; }
+  const sid = currentSession.id || currentSession.session_id;
+  toast('Issuing readiness certificate…','info');
+  window.open(`${API}/api/sessions/${sid}/certificate.pdf`,'_blank');
+}
+function downloadBundle() {
+  if (!currentSession) { toast('No active session','warn'); return; }
+  const sid = currentSession.id || currentSession.session_id;
+  toast('Building change-management bundle…','info');
+  window.open(`${API}/api/sessions/${sid}/bundle.zip`,'_blank');
 }
 
 async function loadSQL() {
