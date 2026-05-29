@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>xREF DataMapper — Client Onboarding Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0b1020; --bg2:#0f152b; --panel:#121a33; --panel2:#172143;
+    --line:#243156; --txt:#e7ecf7; --muted:#93a0c2; --dim:#67739a;
+    --cyan:#34d3ee; --green:#3ddc97; --amber:#f5c451; --red:#ff6b6b;
+    --violet:#8b7bff; --mono:'JetBrains Mono',ui-monospace,monospace;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    font-family:Inter,system-ui,sans-serif;background:
+      radial-gradient(1200px 700px at 80% -10%, #16224a 0%, transparent 60%),
+      radial-gradient(900px 600px at -10% 110%, #122 0%, transparent 55%),
+      var(--bg);
+    color:var(--txt);display:flex;align-items:center;justify-content:center;
+    min-height:100%;padding:24px;overflow:hidden;
+  }
+  .stage{width:min(1080px,96vw);}
+  /* ── Browser chrome frame ── */
+  .frame{background:var(--bg2);border:1px solid var(--line);border-radius:14px;
+    box-shadow:0 30px 80px rgba(0,0,0,.55);overflow:hidden}
+  .chrome{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);
+    background:linear-gradient(180deg,#141d3a,#101730)}
+  .dots{display:flex;gap:6px}
+  .dot{width:11px;height:11px;border-radius:50%}
+  .dot.r{background:#ff5f57}.dot.y{background:#febc2e}.dot.g{background:#28c840}
+  .url{flex:1;display:flex;align-items:center;gap:8px;background:#0b1228;border:1px solid var(--line);
+    border-radius:8px;padding:6px 12px;font:500 12.5px/1 var(--mono);color:var(--muted)}
+  .url .lock{color:var(--green)}
+  /* ── App viewport ── */
+  .viewport{position:relative;height:560px;background:
+    linear-gradient(180deg,#0c1228, #0b1020);overflow:hidden}
+  .scene{position:absolute;inset:0;padding:0;opacity:0;pointer-events:none;
+    transition:opacity .5s ease}
+  .scene.active{opacity:1;pointer-events:auto}
+
+  /* App shell */
+  .app{display:grid;grid-template-columns:212px 1fr;height:100%}
+  .side{background:#0c142b;border-right:1px solid var(--line);padding:18px 14px;display:flex;flex-direction:column;gap:6px}
+  .brand{display:flex;align-items:center;gap:9px;font-weight:800;font-size:15px;margin-bottom:14px;letter-spacing:.2px}
+  .brand .mk{width:24px;height:24px;border-radius:7px;background:linear-gradient(135deg,var(--cyan),var(--violet));
+    display:grid;place-items:center;font-size:13px;color:#06101f;font-weight:800}
+  .nav{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:9px;color:var(--muted);font-size:13px;font-weight:500}
+  .nav.on{background:var(--panel2);color:var(--txt)}
+  .nav .i{width:16px;text-align:center;opacity:.9}
+  .side .ws{margin-top:auto;border-top:1px solid var(--line);padding-top:12px;font-size:11.5px;color:var(--dim)}
+  .side .ws b{color:var(--muted);display:block;font-size:12.5px}
+
+  .main{padding:26px 30px;overflow:hidden;position:relative}
+  .h1{font-size:21px;font-weight:700;margin:0 0 3px}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 20px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  .kpi{font-size:12px;color:var(--muted)}
+  .kpi b{display:block;font-size:24px;color:var(--txt);font-weight:700;margin-top:4px}
+  .btn{display:inline-flex;align-items:center;gap:7px;background:linear-gradient(180deg,var(--cyan),#1eb6d4);
+    color:#04131b;font-weight:700;border:none;border-radius:9px;padding:10px 15px;font-size:13px}
+  .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--txt);font-weight:600}
+  .pill{display:inline-flex;align-items:center;gap:6px;font:600 11px/1 Inter;padding:5px 9px;border-radius:20px}
+  .pill.admin{background:rgba(139,123,255,.16);color:#bdb4ff}
+  .pill.mapper{background:rgba(52,211,238,.14);color:#8fe6f6}
+  .pill.review{background:rgba(245,196,81,.14);color:#f3d27e}
+  .pill.read{background:rgba(147,160,194,.14);color:#b6c0db}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th{ text-align:left;color:var(--dim);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--line);font-size:11px;text-transform:uppercase;letter-spacing:.4px}
+  td{padding:10px;border-bottom:1px solid #1b2545;color:var(--txt)}
+  .mono{font-family:var(--mono);font-size:12px;color:var(--cyan)}
+  .muted{color:var(--muted)}
+  .bar{height:7px;border-radius:6px;background:#1b2547;overflow:hidden}
+  .bar>span{display:block;height:100%;border-radius:6px;background:linear-gradient(90deg,var(--cyan),var(--green))}
+  .tag{font:600 11px/1 var(--mono);padding:4px 8px;border-radius:6px;background:#13203f;color:var(--muted)}
+  .ok{color:var(--green)} .warn{color:var(--amber)}
+
+  /* Login scene */
+  .login{height:100%;display:grid;place-items:center}
+  .loginCard{width:380px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:30px 28px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+  .field{margin:12px 0}
+  .field label{display:block;font-size:11.5px;color:var(--muted);margin-bottom:6px}
+  .field .inp{background:#0c1330;border:1px solid var(--line);border-radius:9px;padding:11px 13px;font-size:13px;color:var(--txt);font-family:var(--mono)}
+  .field .inp.empty{color:var(--dim)}
+
+  /* cursor */
+  .cursor{position:absolute;z-index:50;width:22px;height:22px;left:50%;top:60%;
+    transition:left .9s cubic-bezier(.5,.05,.2,1), top .9s cubic-bezier(.5,.05,.2,1);pointer-events:none;filter:drop-shadow(0 2px 3px rgba(0,0,0,.5))}
+  .cursor svg{width:100%;height:100%}
+  .cursor.click::after{content:'';position:absolute;left:-6px;top:-6px;width:34px;height:34px;border-radius:50%;
+    border:2px solid var(--cyan);animation:ring .5s ease-out}
+  @keyframes ring{from{transform:scale(.2);opacity:.9}to{transform:scale(1);opacity:0}}
+
+  /* toast */
+  .toast{position:absolute;right:22px;bottom:22px;background:#0e1b34;border:1px solid var(--line);
+    border-left:3px solid var(--green);border-radius:10px;padding:12px 16px;font-size:13px;display:flex;gap:9px;align-items:center;
+    box-shadow:0 16px 40px rgba(0,0,0,.5)}
+  .toast .ic{color:var(--green);font-weight:800}
+
+  /* entrance animations applied when scene becomes active */
+  .scene.active .pop{animation:pop .55s both}
+  .scene.active .pop2{animation:pop .55s .12s both}
+  .scene.active .pop3{animation:pop .55s .24s both}
+  .scene.active .pop4{animation:pop .55s .36s both}
+  .scene.active .row{animation:slidein .5s both}
+  .scene.active .row:nth-child(2){animation-delay:.1s}
+  .scene.active .row:nth-child(3){animation-delay:.2s}
+  .scene.active .row:nth-child(4){animation-delay:.3s}
+  .scene.active .row:nth-child(5){animation-delay:.4s}
+  .scene.active .fillbar>span{animation:fill 1.4s .3s both cubic-bezier(.4,0,.2,1)}
+  @keyframes pop{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}
+  @keyframes slidein{from{opacity:0;transform:translateX(-12px)}to{opacity:1;transform:none}}
+  @keyframes fill{from{width:0}}
+
+  /* Title / end cards */
+  .titlecard{height:100%;display:grid;place-items:center;text-align:center;
+    background:radial-gradient(700px 400px at 50% 30%, #1a2a57 0%, transparent 60%)}
+  .titlecard .mk{width:64px;height:64px;border-radius:18px;background:linear-gradient(135deg,var(--cyan),var(--violet));
+    display:grid;place-items:center;font-size:32px;color:#06101f;font-weight:800;margin:0 auto 18px}
+  .titlecard h1{font-size:34px;margin:0 0 8px;letter-spacing:-.5px}
+  .titlecard p{color:var(--muted);font-size:15px;margin:0}
+  .checklist{list-style:none;padding:0;margin:18px auto 0;max-width:460px;text-align:left}
+  .checklist li{padding:8px 0;font-size:14px;color:var(--txt);display:flex;gap:10px;align-items:center}
+  .checklist .c{color:var(--green);font-weight:800}
+
+  .pipeline{display:flex;align-items:center;gap:0;margin:8px 0 18px}
+  .pstep{flex:1;text-align:center;font-size:11px;color:var(--dim);position:relative}
+  .pstep .b{width:30px;height:30px;border-radius:50%;border:2px solid var(--line);display:grid;place-items:center;margin:0 auto 6px;font-weight:700;color:var(--dim);background:#0c142b}
+  .pstep.done .b{border-color:var(--green);color:var(--green)}
+  .pstep.now .b{border-color:var(--cyan);color:var(--cyan);box-shadow:0 0 0 4px rgba(52,211,238,.15)}
+  .pstep::after{content:'';position:absolute;top:15px;left:60%;width:80%;height:2px;background:var(--line)}
+  .pstep:last-child::after{display:none}
+  .pstep.done::after{background:var(--green)}
+
+  /* ── Caption + controls bar ── */
+  .caption{margin-top:16px;background:rgba(10,16,34,.7);border:1px solid var(--line);border-radius:12px;
+    padding:14px 18px;backdrop-filter:blur(6px);min-height:64px;display:flex;align-items:center;gap:14px}
+  .caption .num{font:700 12px/1 var(--mono);color:var(--cyan);background:#0e1b34;border:1px solid var(--line);
+    border-radius:8px;padding:8px 10px;white-space:nowrap}
+  .caption .txt{font-size:14.5px;color:var(--txt);line-height:1.45}
+  .caption .txt b{color:var(--cyan)}
+  .controls{display:flex;align-items:center;gap:10px;margin-top:12px}
+  .progress{flex:1;height:6px;background:#162145;border-radius:6px;overflow:hidden;cursor:pointer}
+  .progress>span{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--cyan),var(--green));transition:width .25s linear}
+  .ctl{background:#121a33;border:1px solid var(--line);color:var(--txt);border-radius:8px;
+    width:38px;height:34px;font-size:14px;cursor:pointer;display:grid;place-items:center}
+  .ctl:hover{border-color:var(--cyan)}
+  .ctl.play{width:auto;padding:0 14px;font-weight:600;gap:7px;display:flex;align-items:center}
+  .hint{font-size:11.5px;color:var(--dim);text-align:center;margin-top:9px}
+  kbd{font-family:var(--mono);background:#121a33;border:1px solid var(--line);border-radius:5px;padding:1px 6px;font-size:11px}
+</style>
+</head>
+<body>
+<div class="stage">
+  <div class="frame">
+    <div class="chrome">
+      <div class="dots"><div class="dot r"></div><div class="dot y"></div><div class="dot g"></div></div>
+      <div class="url"><span class="lock">🔒</span> app.xref-datamapper.com<span id="urlpath" class="muted"></span></div>
+    </div>
+    <div class="viewport" id="viewport">
+      <div class="cursor" id="cursor"><svg viewBox="0 0 24 24" fill="#fff" stroke="#04131b" stroke-width="1"><path d="M5 2l14 8.5-6.2 1.2 3.4 6.6-2.7 1.4-3.4-6.6L5 18z"/></svg></div>
+      <!-- scenes injected here -->
+    </div>
+  </div>
+
+  <div class="caption">
+    <div class="num" id="capNum">00 / 00</div>
+    <div class="txt" id="capTxt">—</div>
+  </div>
+  <div class="controls">
+    <button class="ctl" id="prev" title="Previous (←)">⏮</button>
+    <button class="ctl play" id="play" title="Play / Pause (space)"><span id="playIcon">▮▮</span> <span id="playLbl">Pause</span></button>
+    <button class="ctl" id="next" title="Next (→)">⏭</button>
+    <div class="progress" id="progress"><span id="progressBar"></span></div>
+    <button class="ctl" id="restart" title="Restart (R)">↺</button>
+  </div>
+  <div class="hint">Auto-playing · <kbd>Space</kbd> play/pause · <kbd>←</kbd>/<kbd>→</kbd> step · <kbd>R</kbd> restart · <kbd>F</kbd> hide controls for clean recording</div>
+</div>
+
+<script>
+/* ─────────────────────────────────────────────────────────────
+   Scene definitions: each has a url path, caption, duration (ms),
+   the mock-UI html, and an optional cursor target (selector) +
+   click flag for a little pointer animation.
+   ───────────────────────────────────────────────────────────── */
+const PILL = (r)=>({admin:'<span class="pill admin">● admin</span>',mapper:'<span class="pill mapper">● mapper</span>',reviewer:'<span class="pill review">● reviewer</span>',readonly:'<span class="pill read">● readonly</span>'}[r]);
+
+function shell(active, mainHtml){
+  const nav = [['📊','Dashboard'],['🗂','Sessions'],['👥','Team'],['🔌','Connections'],['⚙️','Settings']];
+  return `<div class="app">
+    <div class="side">
+      <div class="brand"><span class="mk">x</span> xREF DataMapper</div>
+      ${nav.map(n=>`<div class="nav ${n[1]===active?'on':''}"><span class="i">${n[0]}</span>${n[1]}</div>`).join('')}
+      <div class="ws"><b>Acme Telecom</b>workspace · enterprise plan</div>
+    </div>
+    <div class="main">${mainHtml}</div>
+  </div>`;
+}
+
+const SCENES = [
+  {
+    path:'', dur:5200, cap:'Welcome to <b>xREF DataMapper</b> — this is the client-admin onboarding flow, start to finish.',
+    html:`<div class="titlecard">
+      <div>
+        <div class="mk pop">x</div>
+        <h1 class="pop2">Client Onboarding</h1>
+        <p class="pop3">Agentic source-to-target data mapping · for new workspace admins</p>
+      </div>
+    </div>`
+  },
+  {
+    path:'/login', dur:6500, cap:'<b>Step 1 — Sign in.</b> Your admin enters the workspace slug, email, and the temporary password from the invite email.',
+    cursor:'#loginBtn', click:true,
+    html:`<div class="login"><div class="loginCard pop">
+      <div style="font-weight:700;font-size:17px;margin-bottom:4px">Sign in to your workspace</div>
+      <div class="muted" style="font-size:12.5px;margin-bottom:14px">Secure access · SSO available</div>
+      <div class="field"><label>Workspace</label><div class="inp">acme-telecom</div></div>
+      <div class="field"><label>Email</label><div class="inp">admin@acme-telecom.com</div></div>
+      <div class="field"><label>Password</label><div class="inp">••••••••••••</div></div>
+      <button class="btn" id="loginBtn" style="width:100%;justify-content:center;margin-top:8px">Sign in →</button>
+      <div class="muted" style="text-align:center;font-size:11.5px;margin-top:12px">Forgot password? · Reset via email</div>
+    </div></div>`
+  },
+  {
+    path:'/dashboard', dur:6000, cap:'<b>Step 2 — Your workspace.</b> Each client is an isolated tenant. Data is never shared across workspaces.',
+    html: shell('Dashboard',`
+      <h2 class="h1 pop">Welcome, Acme Telecom 👋</h2>
+      <p class="sub pop">Let's get your first source-to-target mapping running.</p>
+      <div class="grid3">
+        <div class="card pop2"><div class="kpi">Mapping sessions<b>0</b></div></div>
+        <div class="card pop3"><div class="kpi">Team members<b>1</b></div></div>
+        <div class="card pop4"><div class="kpi">Plan<b style="font-size:18px;color:var(--cyan)">Enterprise</b></div></div>
+      </div>
+      <div class="card pop4" style="margin-top:14px;display:flex;justify-content:space-between;align-items:center">
+        <div><div style="font-weight:600">Get started</div><div class="muted" style="font-size:12.5px">Invite your team, then create a mapping session.</div></div>
+        <button class="btn">+ New session</button>
+      </div>`)
+  },
+  {
+    path:'/team', dur:7800, cap:'<b>Step 3 — Invite your team.</b> Assign roles: <b>admin</b>, <b>mapper</b>, <b>reviewer</b>, or <b>readonly</b>. Invites are emailed automatically.',
+    cursor:'#inviteBtn', click:true,
+    html: shell('Team',`
+      <h2 class="h1 pop">Team & roles</h2>
+      <p class="sub pop">Role-based access control keeps mapping, review, and admin duties separate.</p>
+      <div class="card pop2">
+        <table>
+          <thead><tr><th>Member</th><th>Role</th><th>Status</th></tr></thead>
+          <tbody>
+            <tr class="row"><td>admin@acme-telecom.com <span class="muted">(you)</span></td><td>${PILL('admin')}</td><td class="ok">● active</td></tr>
+            <tr class="row"><td>priya@acme-telecom.com</td><td>${PILL('mapper')}</td><td class="warn">● invited</td></tr>
+            <tr class="row"><td>deepak@acme-telecom.com</td><td>${PILL('reviewer')}</td><td class="warn">● invited</td></tr>
+            <tr class="row"><td>auditor@acme-telecom.com</td><td>${PILL('readonly')}</td><td class="warn">● invited</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <button class="btn" id="inviteBtn" style="margin-top:14px">+ Invite member</button>`)
+  },
+  {
+    path:'/sessions/new', dur:6500, cap:'<b>Step 4 — Create a mapping session.</b> A session holds one source-to-target migration and its full audit trail.',
+    cursor:'#createBtn', click:true,
+    html: shell('Sessions',`
+      <h2 class="h1 pop">New mapping session</h2>
+      <p class="sub pop">Name it and add any business context the AI should consider.</p>
+      <div class="card pop2">
+        <div class="field"><label>Session name</label><div class="inp">Billing DB → BigQuery warehouse</div></div>
+        <div class="field"><label>Instructions (optional)</label><div class="inp" style="height:auto;padding:12px">Map legacy billing tables to the TM Forum SID model. Preserve customer + subscription keys.</div></div>
+        <button class="btn" id="createBtn" style="margin-top:6px">Create session →</button>
+      </div>`)
+  },
+  {
+    path:'/sessions/1/source', dur:7800, cap:'<b>Step 5 — Connect the source.</b> Upload a schema/DDL file or connect a live database (Postgres, Oracle, Snowflake, Databricks…). Schema is read automatically.',
+    html: shell('Sessions',`
+      <h2 class="h1 pop">Connect source</h2>
+      <p class="sub pop">Schema discovered from <span class="mono">billing_prod</span> · credentials encrypted at rest.</p>
+      <div class="grid2">
+        <div class="card pop2">
+          <div style="font-weight:600;margin-bottom:10px">Source tables <span class="tag">12 found</span></div>
+          <div class="row" style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #1b2545"><span class="mono">customer_accounts</span><span class="muted">18 cols</span></div>
+          <div class="row" style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #1b2545"><span class="mono">subscriptions</span><span class="muted">22 cols</span></div>
+          <div class="row" style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid #1b2545"><span class="mono">invoices</span><span class="muted">14 cols</span></div>
+          <div class="row" style="display:flex;justify-content:space-between;padding:7px 0"><span class="mono">usage_records</span><span class="muted">9 cols</span></div>
+        </div>
+        <div class="card pop3">
+          <div style="font-weight:600;margin-bottom:10px">Connection</div>
+          <div class="muted" style="font-size:12.5px;line-height:1.9">
+            Type · <span class="mono">PostgreSQL</span><br>
+            Host · <span class="mono">billing-db.acme:5432</span><br>
+            Status · <span class="ok">● connected</span><br>
+            Secrets · <span class="ok">🔒 encrypted</span>
+          </div>
+        </div>
+      </div>`)
+  },
+  {
+    path:'/sessions/1/target', dur:6500, cap:'<b>Step 6 — Define the target.</b> Point at your warehouse (e.g. BigQuery) or upload the target schema. Here it\'s the TM Forum SID model.',
+    html: shell('Sessions',`
+      <h2 class="h1 pop">Target schema</h2>
+      <p class="sub pop">BigQuery · dataset <span class="mono">acme_sid_warehouse</span></p>
+      <div class="card pop2">
+        <table>
+          <thead><tr><th>Target table</th><th>Model</th><th>Columns</th></tr></thead>
+          <tbody>
+            <tr class="row"><td class="mono">party_customer</td><td><span class="tag">TMF SID</span></td><td class="muted">21</td></tr>
+            <tr class="row"><td class="mono">product_subscription</td><td><span class="tag">TMF SID</span></td><td class="muted">26</td></tr>
+            <tr class="row"><td class="mono">customer_bill</td><td><span class="tag">TMF SID</span></td><td class="muted">17</td></tr>
+            <tr class="row"><td class="mono">usage_event</td><td><span class="tag">TMF SID</span></td><td class="muted">12</td></tr>
+          </tbody>
+        </table>
+      </div>`)
+  },
+  {
+    path:'/sessions/1/run', dur:8200, cap:'<b>Step 7 — Run the agentic mapping.</b> AI agents match every source field to the target, infer transformations, and score confidence.',
+    html: shell('Sessions',`
+      <h2 class="h1 pop">Agentic mapping</h2>
+      <p class="sub pop">Multi-agent pipeline · analyzing 63 source fields…</p>
+      <div class="pipeline pop2">
+        <div class="pstep done"><div class="b">✓</div>Profile</div>
+        <div class="pstep done"><div class="b">✓</div>Match</div>
+        <div class="pstep now"><div class="b">3</div>Transform</div>
+        <div class="pstep"><div class="b">4</div>Confidence</div>
+        <div class="pstep"><div class="b">5</div>Review</div>
+      </div>
+      <div class="card pop3">
+        <div style="display:flex;justify-content:space-between;font-size:12.5px;margin-bottom:6px"><span class="muted">Mapping progress</span><span class="mono ok">48 / 63 fields</span></div>
+        <div class="bar fillbar"><span style="width:76%"></span></div>
+        <div style="margin-top:16px;font:500 12px/1.8 var(--mono);color:var(--muted)">
+          <div>→ customer_accounts.acct_id  ⇒  party_customer.customer_ref  <span class="ok">98%</span></div>
+          <div>→ subscriptions.plan_code   ⇒  product_subscription.offering  <span class="ok">94%</span></div>
+          <div>→ invoices.bill_dt          ⇒  customer_bill.bill_date  <span class="warn">81%</span></div>
+        </div>
+      </div>`)
+  },
+  {
+    path:'/sessions/1/review', dur:8200, cap:'<b>Step 8 — Review & approve.</b> A reviewer checks AI suggestions, edits low-confidence rows, and approves the gate. Every action is audited.',
+    cursor:'#approveBtn', click:true,
+    html: shell('Sessions',`
+      <h2 class="h1 pop">Review mappings <span class="tag">Gate 2</span></h2>
+      <p class="sub pop">63 mappings · 58 high-confidence · 5 need a look.</p>
+      <div class="card pop2">
+        <table>
+          <thead><tr><th>Source field</th><th>Target column</th><th>Confidence</th><th></th></tr></thead>
+          <tbody>
+            <tr class="row"><td class="mono">acct_id</td><td class="mono">customer_ref</td><td><div class="bar" style="width:90px"><span style="width:98%"></span></div></td><td class="ok">✓</td></tr>
+            <tr class="row"><td class="mono">plan_code</td><td class="mono">offering</td><td><div class="bar" style="width:90px"><span style="width:94%"></span></div></td><td class="ok">✓</td></tr>
+            <tr class="row"><td class="mono">bill_dt</td><td class="mono">bill_date</td><td><div class="bar" style="width:90px"><span style="width:81%;background:linear-gradient(90deg,var(--amber),var(--green))"></span></div></td><td class="warn">edit</td></tr>
+            <tr class="row"><td class="mono">usage_qty</td><td class="mono">event_volume</td><td><div class="bar" style="width:90px"><span style="width:91%"></span></div></td><td class="ok">✓</td></tr>
+          </tbody>
+        </table>
+        <button class="btn" id="approveBtn" style="margin-top:14px">✓ Approve gate</button>
+      </div>`)
+  },
+  {
+    path:'/sessions/1/export', dur:6800, cap:'<b>Step 9 — Export.</b> Generate the mapping spec and ready-to-run SQL for your target dialect — CSV, Excel, or SQL DDL.',
+    cursor:'#dlBtn', click:true,
+    html: shell('Sessions',`
+      <h2 class="h1 pop">Export</h2>
+      <p class="sub pop">Mapping complete · 63/63 fields approved.</p>
+      <div class="grid3">
+        <div class="card pop2" style="text-align:center"><div style="font-size:24px">📄</div><div style="font-weight:600;margin-top:6px">CSV</div><div class="muted" style="font-size:12px">Mapping spec</div></div>
+        <div class="card pop3" style="text-align:center"><div style="font-size:24px">📊</div><div style="font-weight:600;margin-top:6px">Excel</div><div class="muted" style="font-size:12px">Review pack</div></div>
+        <div class="card pop4" style="text-align:center;border-color:var(--cyan)"><div style="font-size:24px">🗄️</div><div style="font-weight:600;margin-top:6px">SQL DDL</div><div class="muted" style="font-size:12px">BigQuery dialect</div></div>
+      </div>
+      <button class="btn" id="dlBtn" style="margin-top:16px">⬇ Download SQL</button>`)
+  },
+  {
+    path:'/done', dur:7000, cap:'<b>That\'s the full onboarding.</b> From sign-in to exported SQL — and every client\'s data stays isolated, encrypted, and audited.',
+    html:`<div class="titlecard">
+      <div>
+        <div class="mk pop">✓</div>
+        <h1 class="pop2" style="font-size:28px">You're onboarded</h1>
+        <ul class="checklist">
+          <li class="pop2"><span class="c">✓</span> Workspace created & team invited</li>
+          <li class="pop3"><span class="c">✓</span> Source connected · secrets encrypted</li>
+          <li class="pop3"><span class="c">✓</span> AI mapping run & reviewed</li>
+          <li class="pop4"><span class="c">✓</span> SQL exported — ready to migrate</li>
+        </ul>
+        <p class="pop4" style="margin-top:18px;font-size:13px">xREF DataMapper · enterprise-grade, multi-tenant, auditable</p>
+      </div>
+    </div>`
+  }
+];
+
+/* ── Player engine ── */
+const vp = document.getElementById('viewport');
+const cursor = document.getElementById('cursor');
+const capNum = document.getElementById('capNum');
+const capTxt = document.getElementById('capTxt');
+const progressBar = document.getElementById('progressBar');
+const playLbl = document.getElementById('playLbl');
+const playIcon = document.getElementById('playIcon');
+const urlpath = document.getElementById('urlpath');
+let idx = 0, playing = true, t0 = 0, raf = null, sceneTimer = null;
+
+function renderScene(i){
+  // remove old scene nodes (keep cursor)
+  [...vp.querySelectorAll('.scene')].forEach(n=>n.remove());
+  const s = SCENES[i];
+  const div = document.createElement('div');
+  div.className = 'scene';
+  div.innerHTML = s.html;
+  vp.appendChild(div);
+  // force reflow then activate (so entrance animations play)
+  void div.offsetWidth;
+  div.classList.add('active');
+  capNum.textContent = String(i+1).padStart(2,'0') + ' / ' + String(SCENES.length).padStart(2,'0');
+  capTxt.innerHTML = s.cap;
+  urlpath.textContent = s.path || '';
+  // cursor: reset to center, then move to target + click partway through
+  cursor.classList.remove('click');
+  cursor.style.left = '52%'; cursor.style.top = '64%'; cursor.style.opacity = s.cursor ? '1':'0';
+  if(s.cursor){
+    setTimeout(()=>{
+      const tgt = div.querySelector(s.cursor);
+      if(tgt){
+        const vpr = vp.getBoundingClientRect(), tr = tgt.getBoundingClientRect();
+        cursor.style.left = (tr.left - vpr.left + tr.width/2) + 'px';
+        cursor.style.top  = (tr.top  - vpr.top  + tr.height/2) + 'px';
+        if(s.click){ setTimeout(()=>{ cursor.classList.add('click'); tgt.style.filter='brightness(1.15)'; setTimeout(()=>tgt.style.filter='',400);}, 950); }
+      }
+    }, 900);
+  }
+}
+
+function startTimer(){
+  cancelAnimationFrame(raf); clearTimeout(sceneTimer);
+  const dur = SCENES[idx].dur;
+  t0 = performance.now();
+  const tick = (now)=>{
+    const elapsed = now - t0;
+    const frac = Math.min(1, elapsed/dur);
+    const overall = (idx + frac)/SCENES.length;
+    progressBar.style.width = (overall*100) + '%';
+    if(frac < 1 && playing){ raf = requestAnimationFrame(tick); }
+  };
+  raf = requestAnimationFrame(tick);
+  sceneTimer = setTimeout(()=>{ if(playing) go(idx+1); }, dur);
+}
+
+function go(i){
+  if(i >= SCENES.length){ // loop back to start, pause at end card already shown
+    i = SCENES.length-1; setPlaying(false);
+    progressBar.style.width='100%';
+    return;
+  }
+  if(i < 0) i = 0;
+  idx = i;
+  renderScene(idx);
+  if(playing) startTimer();
+}
+
+function setPlaying(p){
+  playing = p;
+  playLbl.textContent = p ? 'Pause' : 'Play';
+  playIcon.textContent = p ? '▮▮' : '▶';
+  if(p){ startTimer(); } else { cancelAnimationFrame(raf); clearTimeout(sceneTimer); }
+}
+
+document.getElementById('play').onclick = ()=> setPlaying(!playing);
+document.getElementById('next').onclick = ()=>{ go(idx+1); };
+document.getElementById('prev').onclick = ()=>{ go(idx-1); };
+document.getElementById('restart').onclick = ()=>{ idx=0; setPlaying(true); renderScene(0); startTimer(); };
+document.getElementById('progress').onclick = (e)=>{
+  const r = e.currentTarget.getBoundingClientRect();
+  const frac = (e.clientX - r.left)/r.width;
+  go(Math.min(SCENES.length-1, Math.floor(frac*SCENES.length)));
+};
+document.addEventListener('keydown', (e)=>{
+  if(e.code==='Space'){ e.preventDefault(); setPlaying(!playing); }
+  else if(e.code==='ArrowRight'){ go(idx+1); }
+  else if(e.code==='ArrowLeft'){ go(idx-1); }
+  else if(e.key==='r'||e.key==='R'){ document.getElementById('restart').click(); }
+  else if(e.key==='f'||e.key==='F'){ document.querySelector('.controls').style.display = document.querySelector('.controls').style.display==='none'?'flex':'none'; document.querySelector('.hint').style.display = document.querySelector('.hint').style.display==='none'?'block':'none'; }
+});
+
+// boot
+renderScene(0);
+startTimer();
+</script>
+</body>
+</html>

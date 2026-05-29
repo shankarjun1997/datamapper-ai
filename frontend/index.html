@@ -3550,13 +3550,58 @@ function initUserWidget() {
 }
 
 // ── Workspace config: opens Provider & Env tab ──────────
-function openWorkspaceConfig() {
+// Jump to the LLM / API provider settings tab (shared by Workspace + API Keys).
+function _gotoProviderSettings() {
   document.querySelectorAll('.user-dropdown,.topbar-dropdown').forEach(d => d.classList.remove('open'));
   showTab('settings');
   setTimeout(() => {
     const provTab = document.querySelector('[data-settings-tab="provider"]');
     if (provTab) provTab.click();
   }, 120);
+}
+
+// ── Workspace Settings: real workspace overview + security posture ──────────
+function openWorkspaceConfig() {
+  document.querySelectorAll('.user-dropdown,.topbar-dropdown').forEach(d => d.classList.remove('open'));
+  const tname = localStorage.getItem('xref_user_tenant_name') || '—';
+  const tslug = localStorage.getItem('xref_user_tenant') || '—';
+  const plan  = localStorage.getItem('xref_user_plan') || 'standard';
+  const role  = localStorage.getItem('xref_user_role') || 'readonly';
+  const isAdmin = role === 'admin';
+  const row = (label, val, ok) => `
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border-2)">
+      <span style="font-size:12px;color:var(--text-3)">${label}</span>
+      <span style="font-size:12px;font-weight:600;color:${ok===false?'var(--text-2)':'var(--text-1)'}">${val}</span>
+    </div>`;
+  const sec = (label) => `
+    <div style="display:flex;align-items:center;gap:8px;padding:7px 0;font-size:12px;color:var(--text-2)">
+      <span style="color:#0fd4b0;font-weight:800">✓</span> ${label}
+    </div>`;
+  showModal({
+    title: 'Workspace Settings',
+    html: `
+      <div style="background:var(--bg-3);border-radius:8px;padding:4px 14px;margin-bottom:14px">
+        ${row('Workspace', tname)}
+        ${row('Slug', `<span style="font-family:monospace">${tslug}</span>`)}
+        ${row('Plan', plan)}
+        ${row('Your role', role)}
+      </div>
+      <div style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);margin:4px 0 2px">Security &amp; secrets</div>
+      <div style="background:var(--bg-3);border-radius:8px;padding:6px 14px;margin-bottom:14px">
+        ${sec('Authentication required for all access')}
+        ${sec('Secrets encrypted at rest (API keys, DB credentials)')}
+        ${sec('Tenant data isolation enforced')}
+        ${sec('Full audit trail of every action')}
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button onclick="document.getElementById('_xrefGenericModal').remove();openTeamPanel()" style="flex:1;min-width:120px;padding:9px;border-radius:8px;border:1px solid var(--border-2);background:var(--bg-3);color:var(--text-1);font-size:12px;font-weight:600;cursor:pointer">👥 Team Members</button>
+        <button onclick="document.getElementById('_xrefGenericModal').remove();openBillingPanel()" style="flex:1;min-width:120px;padding:9px;border-radius:8px;border:1px solid var(--border-2);background:var(--bg-3);color:var(--text-1);font-size:12px;font-weight:600;cursor:pointer">💳 Usage &amp; Billing</button>
+        <button onclick="document.getElementById('_xrefGenericModal').remove();openApiKeys()" style="flex:1;min-width:120px;padding:9px;border-radius:8px;border:1px solid var(--border-2);background:var(--bg-3);color:var(--text-1);font-size:12px;font-weight:600;cursor:pointer">🔑 API &amp; LLM Config</button>
+      </div>
+      ${isAdmin ? '' : '<p style="font-size:11px;color:var(--text-3);margin-top:12px;text-align:center">Some settings require an admin role.</p>'}
+    `,
+    actions: [{ label:'Close', fn:'', primary:false }]
+  });
 }
 
 // ── Team members: opens admin → users tab ───────────────
@@ -3603,20 +3648,77 @@ function openMyProfile() {
           </div>
         </div>
       </div>
-      <div style="background:var(--bg-3);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--text-2)">
+      <div style="background:var(--bg-3);border-radius:8px;padding:12px 14px;font-size:12px;color:var(--text-2);margin-bottom:16px">
         <div style="display:flex;justify-content:space-between;margin-bottom:8px"><span style="color:var(--text-3)">Workspace</span><b style="color:var(--text-1)">${tname}</b></div>
         <div style="display:flex;justify-content:space-between"><span style="color:var(--text-3)">Plan</span><b style="color:${planCls}">${plan}</b></div>
       </div>
-      <p style="font-size:11px;color:var(--text-3);margin-top:12px;text-align:center">Profile editing available via workspace admin.</p>
+
+      <div style="font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--text-3);margin:0 0 8px">Change password</div>
+      <div style="display:grid;gap:8px">
+        <input id="pwCur" type="password" autocomplete="current-password" placeholder="Current password" class="field-input" style="width:100%">
+        <input id="pwNew" type="password" autocomplete="new-password" placeholder="New password (min 8 chars)" class="field-input" style="width:100%">
+        <input id="pwConfirm" type="password" autocomplete="new-password" placeholder="Confirm new password" class="field-input" style="width:100%">
+        <div id="pwMsg" style="font-size:11px;min-height:14px;color:var(--text-3)"></div>
+        <button onclick="submitPasswordChange()" style="padding:9px;border-radius:8px;border:none;background:var(--cyan);color:#000;font-size:12px;font-weight:700;cursor:pointer">Update password</button>
+      </div>
+
+      <div style="border-top:1px solid var(--border-2);margin-top:16px;padding-top:14px">
+        <button onclick="signOutEverywhere()" style="width:100%;padding:9px;border-radius:8px;border:1px solid var(--border-2);background:var(--bg-3);color:var(--text-1);font-size:12px;font-weight:600;cursor:pointer">Sign out of all devices</button>
+        <p style="font-size:10.5px;color:var(--text-3);margin-top:8px;text-align:center">Revokes every active session for your account.</p>
+      </div>
     `,
     actions: [{ label:'Close', fn:'', primary:false }]
   });
 }
 
-// ── API Keys: jump to provider settings ─────────────────
+// Submit a self-service password change (POST /api/auth/change-password).
+async function submitPasswordChange() {
+  const cur = (document.getElementById('pwCur')||{}).value || '';
+  const nw  = (document.getElementById('pwNew')||{}).value || '';
+  const cf  = (document.getElementById('pwConfirm')||{}).value || '';
+  const msg = document.getElementById('pwMsg');
+  const setMsg = (t, ok) => { if (msg){ msg.textContent = t; msg.style.color = ok ? '#0fd4b0' : 'var(--red, #ff6b6b)'; } };
+  if (!cur || !nw) return setMsg('Enter your current and new password.');
+  if (nw.length < 8) return setMsg('New password must be at least 8 characters.');
+  if (nw !== cf)    return setMsg('New passwords do not match.');
+  // Use a direct fetch (not apiFetch) so a 401 "wrong current password" is shown
+  // inline instead of triggering apiFetch's session-expiry redirect.
+  try {
+    const token = localStorage.getItem('xref_auth_token');
+    const headers = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = 'Bearer ' + token;
+    const csrf = (typeof _getCookie === 'function') ? _getCookie('xref_csrf') : '';
+    if (csrf) headers['X-CSRF-Token'] = csrf;
+    const r = await fetch(API + '/api/auth/change-password', {
+      method: 'POST', headers, credentials: 'include',
+      body: JSON.stringify({ current_password: cur, new_password: nw }),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok) return setMsg(d.detail || 'Could not update password.');
+    // Old sessions are revoked server-side; store the fresh token so we stay in.
+    if (d.token) localStorage.setItem('xref_auth_token', d.token);
+    setMsg('Password updated ✓', true);
+    ['pwCur','pwNew','pwConfirm'].forEach(id => { const el = document.getElementById(id); if (el) el.value=''; });
+    toast('Password updated', 'success');
+    setTimeout(() => { const m = document.getElementById('_xrefGenericModal'); if (m) m.remove(); }, 900);
+  } catch (e) {
+    setMsg('Could not reach the server.');
+  }
+}
+
+// Sign out of all devices: server revokes all tokens, then clear + redirect.
+async function signOutEverywhere() {
+  try { await apiFetch('/api/auth/logout', 'POST'); } catch (_e) {}
+  ['xref_auth_token','xref_user_email','xref_user_tenant','xref_user_tenant_name','xref_user_role','xref_user_plan','xref_user_display_name','dm_session_id']
+    .forEach(k => localStorage.removeItem(k));
+  toast('Signed out of all devices', 'success');
+  setTimeout(() => { window.location.href = '/login'; }, 600);
+}
+
+// ── API Keys & LLM Config: jump to provider/secrets settings ────────────────
 function openApiKeys() {
-  document.querySelectorAll('.user-dropdown,.topbar-dropdown').forEach(d => d.classList.remove('open'));
-  openWorkspaceConfig();
+  _gotoProviderSettings();
+  toast('🔒 API keys are encrypted at rest', 'info');
 }
 
 // ── Keyboard shortcuts modal ─────────────────────────────
