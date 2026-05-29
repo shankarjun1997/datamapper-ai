@@ -21,7 +21,7 @@ from typing import Optional
 
 from fastapi import HTTPException, Request
 
-from app.core.auth import _verify_token
+from app.core.auth import _extract_token, _verify_token
 from app.config import _REQUIRE_AUTH
 from app.state import _TENANTS
 
@@ -47,12 +47,7 @@ def get_user_from_request(request: Request) -> Optional[dict]:
     The dict is built by merging the JWT payload with the up-to-date user
     record from _TENANTS (so role and active status reflect the current state
     even after the token was issued — token role is used as a fallback)."""
-    auth_header = request.headers.get("Authorization", "")
-    token = ""
-    if auth_header.startswith("Bearer "):
-        token = auth_header[7:]
-    if not token:
-        token = request.query_params.get("token", "")
+    token = _extract_token(request)
     if not token:
         return None
     payload = _verify_token(token)

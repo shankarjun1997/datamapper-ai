@@ -10,7 +10,7 @@ services:
     env_file:
       - .env
     environment:
-      - DATABASE_URL=postgresql+psycopg2://xref:xref@postgres:5432/xref
+      - DATABASE_URL=postgresql+psycopg2://xref:${POSTGRES_PASSWORD:-changeme_local_dev}@postgres:5432/xref
       - REDIS_URL=redis://redis:6379/0
     volumes:
       - ./runtime:/app/runtime
@@ -37,7 +37,7 @@ services:
     env_file:
       - .env
     environment:
-      - DATABASE_URL=postgresql+psycopg2://xref:xref@postgres:5432/xref
+      - DATABASE_URL=postgresql+psycopg2://xref:${POSTGRES_PASSWORD:-changeme_local_dev}@postgres:5432/xref
       - REDIS_URL=redis://redis:6379/0
     volumes:
       - ./runtime:/app/runtime
@@ -53,7 +53,7 @@ services:
     environment:
       POSTGRES_DB: xref
       POSTGRES_USER: xref
-      POSTGRES_PASSWORD: xref
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_local_dev}
     ports:
       - "5432:5432"
     volumes:

@@ -25,9 +25,5 @@ echo "    Password  : demo"
 echo "  Or click 'Quick Demo Access' to skip manual entry."
 echo ""
 
-# Use the modular app package (app/main.py) if present, fall back to legacy server.py
-if [ -f "app/main.py" ]; then
-  python3 -m uvicorn app.main:app --host 0.0.0.0 --port 7788 --reload
-else
-  python3 server.py
-fi
+# Run the modular app package (app/main.py).
+python3 -m uvicorn app.main:app --host 0.0.0.0 --port 7788 --reload

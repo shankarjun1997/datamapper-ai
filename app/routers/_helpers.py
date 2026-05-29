@@ -3,10 +3,12 @@ app/routers/_helpers.py — shared utilities used by multiple routers
 """
 from __future__ import annotations
 
+import logging
+import os
 import time
 from collections import defaultdict
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from fastapi import HTTPException, Request
 
@@ -17,19 +19,67 @@ from app.config import (
     _RATE_WINDOW,
 )
 
+logger = logging.getLogger("xref_agent")
+
 # ── Rate limiter ──────────────────────────────────────────────────────────────
+# Prefer Redis (shared across workers/instances) when REDIS_URL is set; fall back
+# to a per-process in-memory window otherwise. The in-memory path is fine for a
+# single instance but does NOT coordinate across replicas.
 _rate_store: Dict[str, List[float]] = defaultdict(list)
 
+_redis_client = None
+_redis_ready = False
 
-def _check_rate_limit(client_ip: str) -> bool:
-    """Returns True if request is allowed, False if rate-limited."""
+
+def _get_redis():
+    global _redis_client, _redis_ready
+    if _redis_ready:
+        return _redis_client
+    _redis_ready = True  # only attempt once
+    url = os.getenv("REDIS_URL", "")
+    if not url:
+        return None
+    try:
+        import redis  # type: ignore
+        _redis_client = redis.from_url(url, socket_timeout=0.25, socket_connect_timeout=0.25)
+        _redis_client.ping()
+        logger.info("Rate limiter using Redis")
+    except Exception as e:  # pragma: no cover - depends on env
+        logger.warning("Redis unavailable for rate limiting, using in-memory: %s", e)
+        _redis_client = None
+    return _redis_client
+
+
+def _check_rate_limit(key: str, limit: Optional[int] = None, window: Optional[int] = None) -> bool:
+    """Return True if the request is allowed, False if rate-limited.
+
+    ``key`` is typically the client IP (or ip+scope for stricter buckets).
+    Uses a fixed-window counter in Redis when available, else an in-memory
+    sliding window.
+    """
+    limit = limit or _RATE_LIMIT
+    window = window or _RATE_WINDOW
     now = time.time()
-    window_start = now - _RATE_WINDOW
-    hits = _rate_store[client_ip]
-    _rate_store[client_ip] = [t for t in hits if t > window_start]
-    if len(_rate_store[client_ip]) >= _RATE_LIMIT:
+
+    client = _get_redis()
+    if client is not None:
+        try:
+            bucket = int(now // window)
+            rkey = f"rl:{key}:{bucket}"
+            count = client.incr(rkey)
+            if count == 1:
+                client.expire(rkey, window)
+            return count <= limit
+        except Exception as e:  # pragma: no cover
+            logger.warning("Redis rate-limit error, falling back to memory: %s", e)
+
+    window_start = now - window
+    hits = [t for t in _rate_store[key] if t > window_start]
+    if len(hits) >= limit:
+        _rate_store[key] = hits
         return False
-    _rate_store[client_ip].append(now)
+    hits.append(now)
+    _rate_store[key] = hits
     return True
 
 

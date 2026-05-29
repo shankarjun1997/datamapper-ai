@@ -1,13 +1,29 @@
 #!/bin/bash
-# Vercel build script — injects the backend API URL into index.html
-# Vercel sets DM_API_URL as an env var; we replace the placeholder before serving.
+# Vercel/Cloudflare-Pages build script — injects the backend API URL into the
+# frontend/ pages so they call the right API when hosted on a separate origin.
+# Set DM_API_URL as a build env var (defaults to the Render API below).
 
 set -e
 
 API_URL="${DM_API_URL:-https://datamapper-ai-api.onrender.com}"
+
+# Build with Vite when the frontend project is present; otherwise serve the raw
+# pages. TARGET_DIR is what gets deployed (and where we inject the API URL).
+if [ -f frontend/package.json ]; then
+  echo "→ Building frontend with Vite…"
+  ( cd frontend && (npm ci --no-audit --no-fund || npm install --no-audit --no-fund) && npm run build )
+  TARGET_DIR="frontend/dist"
+else
+  TARGET_DIR="frontend"
+fi
+
 echo "→ Injecting API URL: $API_URL"
+INJECT="<script>window.__DM_API_URL__='${API_URL}';</script>"
+for f in "$TARGET_DIR/index.html" "$TARGET_DIR/login.html"; do
+  if [ -f "$f" ]; then
+    sed -i "0,/<head[^>]*>/s|<head[^>]*>|&\n${INJECT}|" "$f"
+    echo "  ✓ injected into $f"
+  fi
+done
 
-# Replace the window.__DM_API_URL__ placeholder in the built HTML
-sed -i "s|window.__DM_API_URL__ \|\| 'http://localhost:7788'|'${API_URL}'|g" index.html
-
-echo "→ Build complete"
+echo "→ Build complete (output: $TARGET_DIR)"

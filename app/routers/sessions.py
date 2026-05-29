@@ -6,16 +6,19 @@ from __future__ import annotations
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
 
 from app.core.audit import _now, _write_audit_event
 from app.core.auth import _get_tenant_from_request, _verify_token
+from app.core.rbac import require_readonly
 from app.core.session_store import _session_or_404
 from app.routers._helpers import _get_client_ip
 from app.state import _sessions, _save_sessions
 
-router = APIRouter()
+# Router-level auth floor: every endpoint requires at least a readonly,
+# authenticated user (no-op in dev where XREF_REQUIRE_AUTH=false).
+router = APIRouter(dependencies=[Depends(require_readonly)])
 
 
 class SessionCreate(BaseModel):

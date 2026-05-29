@@ -9,19 +9,22 @@ from typing import Optional
 
 import base64
 import httpx
-from fastapi import APIRouter, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
 from app.config import _JIRA_EMAIL, _JIRA_TOKEN, _JIRA_URL
 from app.core.audit import _write_audit_event
 from app.core.llm_client import _add_usage, _make_llm
+from app.core.rbac import require_mapper
 from app.core.session_store import _session_or_404
 from app.parsers.ddl import parse_ddl
 from app.parsers.schema import parse_schema_file
 from app.routers._helpers import _check_rate_limit, _get_client_ip, _validate_upload
 from app.state import _save_sessions
 
-router = APIRouter()
+# All schema endpoints mutate session state → require mapper or higher
+# (no-op in dev where XREF_REQUIRE_AUTH=false).
+router = APIRouter(dependencies=[Depends(require_mapper)])
 
 
 @router.post("/api/sessions/{sid}/upload")

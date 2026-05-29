@@ -7,17 +7,29 @@ deletion endpoint (/api/admin/users/{email}/data).
 from __future__ import annotations
 
 import asyncio
+import os
+import secrets
 import time
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from app.config import _AUTH_TOKEN_TTL, _REQUIRE_AUTH
 from app.core.audit import _write_audit_event
-from app.core.auth import _get_tenant_from_request, _sign_token, _verify_token
+from app.core.auth import (
+    _COOKIE_NAME,
+    _CSRF_COOKIE,
+    _extract_token,
+    _get_tenant_from_request,
+    _hash_password,
+    _needs_rehash,
+    _sign_token,
+    _verify_password,
+    _verify_token,
+)
 from app.core.oidc import (
     build_authorization_url,
     claims_to_user,
@@ -27,8 +39,13 @@ from app.core.oidc import (
     get_oidc_config,
     get_userinfo,
 )
+from app.core.email import (
+    provider as email_provider,
+    public_base_url as email_public_base_url,
+    send_email,
+)
 from app.core.rbac import ROLE_HIERARCHY, get_user_from_request, require_admin
-from app.routers._helpers import _get_client_ip
+from app.routers._helpers import _check_rate_limit, _get_client_ip
 from app.state import _TENANTS, _save_sessions, _save_tenants, _sessions
 
 router = APIRouter()
@@ -63,6 +80,26 @@ def _public_user(u: dict) -> dict:
     }
 
 
+_IS_PROD = os.getenv("DM_ENV", "dev") == "production"
+
+
+def _set_auth_cookies(response: Response, token: str, ttl: int) -> str:
+    """Set the httpOnly auth cookie + a readable CSRF cookie. Returns the CSRF
+    value. Secure flag is on in production (HTTPS). SameSite=Lax balances CSRF
+    protection with normal top-level navigation."""
+    csrf = secrets.token_urlsafe(24)
+    response.set_cookie(_COOKIE_NAME, token, max_age=ttl, httponly=True,
+                        secure=_IS_PROD, samesite="lax", path="/")
+    response.set_cookie(_CSRF_COOKIE, csrf, max_age=ttl, httponly=False,
+                        secure=_IS_PROD, samesite="lax", path="/")
+    return csrf
+
+
+def _clear_auth_cookies(response: Response) -> None:
+    response.delete_cookie(_COOKIE_NAME, path="/")
+    response.delete_cookie(_CSRF_COOKIE, path="/")
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Schemas
 # ─────────────────────────────────────────────────────────────────────────────
@@ -89,6 +126,16 @@ class PatchUserBody(BaseModel):
 
 class ChangePasswordBody(BaseModel):
     current_password: str
+    new_password: str
+
+
+class ForgotPasswordBody(BaseModel):
+    tenant: str
+    email: str
+
+
+class ResetPasswordBody(BaseModel):
+    token: str
     new_password: str
 
 
@@ -135,12 +182,18 @@ async def tenant_info(slug: str):
 # ─────────────────────────────────────────────────────────────────────────────
 
 @router.post("/api/auth/login")
-async def auth_login(request: Request, body: LoginRequest):
+async def auth_login(request: Request, body: LoginRequest, response: Response):
     """Authenticate a user against a tenant's users list and return a signed
     session token. The JWT now carries the user's role so downstream RBAC
     dependencies can authorise without a DB hit."""
     tenant_slug = body.tenant.strip().lower()
     ip          = _get_client_ip(request)
+
+    # Brute-force protection: max 10 login attempts per IP per 5 minutes.
+    if not _check_rate_limit(f"login:{ip}", limit=10, window=300):
+        _write_audit_event("auth.login_throttled", tenant=tenant_slug, email=body.email, ip=ip)
+        raise HTTPException(status_code=429, detail="Too many login attempts — try again later")
+
     t = _TENANTS.get(tenant_slug)
     if not t:
         _write_audit_event("auth.login_fail", tenant=tenant_slug, email=body.email,
@@ -151,7 +204,7 @@ async def auth_login(request: Request, body: LoginRequest):
     password = body.password
 
     user = _find_user(t, email)
-    if not user or user.get("password") != password:
+    if not user or not _verify_password(password, user.get("password", "")):
         _write_audit_event("auth.login_fail", tenant=tenant_slug, email=email,
                            ip=ip, metadata={"reason": "bad_credentials"})
         raise HTTPException(status_code=401, detail="Invalid email or password")
@@ -160,6 +213,10 @@ async def auth_login(request: Request, body: LoginRequest):
         _write_audit_event("auth.login_fail", tenant=tenant_slug, email=email,
                            ip=ip, metadata={"reason": "deactivated"})
         raise HTTPException(status_code=403, detail="Account deactivated — contact your admin")
+
+    # Transparently upgrade legacy plaintext / sha256 credentials to bcrypt.
+    if _needs_rehash(user.get("password", "")):
+        user["password"] = _hash_password(password)
 
     # Stamp the login and persist
     user["last_login"] = _now_iso()
@@ -179,6 +236,7 @@ async def auth_login(request: Request, body: LoginRequest):
         "iat": time.time(),
     }
     token = _sign_token(payload)
+    csrf = _set_auth_cookies(response, token, int(ttl))
 
     _write_audit_event(
         "auth.login_ok", tenant=tenant_slug, email=email, ip=ip,
@@ -188,6 +246,7 @@ async def auth_login(request: Request, body: LoginRequest):
     return {
         "ok": True,
         "token": token,
+        "csrf_token": csrf,
         "tenant": tenant_slug,
         "tenant_name": t["name"],
         "email": email,
@@ -199,13 +258,8 @@ async def auth_login(request: Request, body: LoginRequest):
 
 @router.get("/api/auth/me")
 async def auth_me(request: Request):
-    """Verify the bearer token and return the current user info."""
-    auth_header = request.headers.get("Authorization", "")
-    token = ""
-    if auth_header.startswith("Bearer "):
-        token = auth_header[7:]
-    if not token:
-        token = request.query_params.get("token", "")
+    """Verify the auth token (header/query/cookie) and return current user info."""
+    token = _extract_token(request)
     payload = _verify_token(token)
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
@@ -227,9 +281,44 @@ async def auth_me(request: Request):
     }
 
 
+@router.post("/api/auth/refresh")
+async def auth_refresh(request: Request, response: Response):
+    """Issue a fresh access token from a still-valid (non-expired, non-revoked)
+    token — sliding-session refresh so active users aren't logged out mid-work."""
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header[7:] if auth_header.startswith("Bearer ") else ""
+    if not token:
+        token = request.query_params.get("token", "")
+    payload = _verify_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+
+    tenant_slug = payload.get("tenant")
+    t = _TENANTS.get(tenant_slug or "") or {}
+    live_user = _find_user(t, payload.get("email", "")) if t else None
+    if not live_user or live_user.get("active") is False:
+        raise HTTPException(status_code=401, detail="Account no longer active")
+
+    now = time.time()
+    new_payload = {
+        "tenant": tenant_slug,
+        "tenant_name": payload.get("tenant_name", tenant_slug),
+        "email": payload.get("email"),
+        "role":  live_user.get("role", payload.get("role", "readonly")),
+        "plan":  t.get("plan", payload.get("plan", "standard")),
+        "exp":   now + _AUTH_TOKEN_TTL,
+        "iat":   now,
+    }
+    new_token = _sign_token(new_payload)
+    csrf = _set_auth_cookies(response, new_token, int(_AUTH_TOKEN_TTL))
+    return {"ok": True, "token": new_token, "csrf_token": csrf, "expires_in": _AUTH_TOKEN_TTL}
+
+
 @router.post("/api/auth/logout")
-async def auth_logout(request: Request):
-    """Client-side logout — token is stateless so just confirm."""
+async def auth_logout(request: Request, response: Response):
+    """Server-side logout-everywhere: bump the user's tokens_valid_after so all
+    previously issued tokens are immediately rejected, and clear cookies."""
+    _clear_auth_cookies(response)
     tenant = _get_tenant_from_request(request)
     auth_header = request.headers.get("Authorization", "")
     token = auth_header[7:] if auth_header.startswith("Bearer ") else ""
@@ -238,8 +327,71 @@ async def auth_logout(request: Request):
         payload = _verify_token(token)
         if payload:
             email = payload.get("email", "unknown")
+            t = _TENANTS.get(payload.get("tenant") or "")
+            target = _find_user(t, email) if t else None
+            if target:
+                target["tokens_valid_after"] = time.time()
+                try:
+                    _save_tenants()
+                except Exception:
+                    pass
     _write_audit_event("auth.logout", tenant=tenant, email=email, ip=_get_client_ip(request))
     return {"ok": True, "message": "Logged out"}
+
+
+@router.post("/api/auth/forgot-password")
+async def forgot_password(body: ForgotPasswordBody, request: Request):
+    """Email a password-reset link. Always returns ok (never reveals whether the
+    account exists). Rate-limited to curb abuse / email bombing."""
+    ip = _get_client_ip(request)
+    if not _check_rate_limit(f"forgot:{ip}", limit=5, window=900):
+        raise HTTPException(429, "Too many reset requests — try again later")
+
+    tenant_slug = body.tenant.strip().lower()
+    email = body.email.strip().lower()
+    t = _TENANTS.get(tenant_slug)
+    user = _find_user(t, email) if t else None
+
+    if user and user.get("active") is not False and email_provider():
+        now = time.time()
+        reset_token = _sign_token({
+            "typ": "reset", "tenant": tenant_slug, "email": email,
+            "exp": now + 3600, "iat": now,   # 1-hour reset window
+        })
+        base = email_public_base_url() or str(request.base_url).rstrip("/")
+        link = f"{base}/login?reset={reset_token}"
+        html = (
+            "<p>We received a request to reset your xREF DataMapper password.</p>"
+            f"<p><a href=\"{link}\">Reset your password</a> (link expires in 1 hour).</p>"
+            "<p>If you didn't request this, you can ignore this email.</p>"
+        )
+        await send_email(email, "Reset your xREF password", html)
+        _write_audit_event("auth.password_reset_requested", tenant=tenant_slug, email=email, ip=ip)
+
+    return {"ok": True, "message": "If that account exists, a reset link has been sent."}
+
+
+@router.post("/api/auth/reset-password")
+async def reset_password(body: ResetPasswordBody, request: Request):
+    """Complete a password reset using the emailed token."""
+    payload = _verify_token(body.token)
+    if not payload or payload.get("typ") != "reset":
+        raise HTTPException(401, "Invalid or expired reset link")
+    if not body.new_password or len(body.new_password) < 8:
+        raise HTTPException(422, "New password must be at least 8 characters")
+
+    t = _TENANTS.get(payload.get("tenant") or "")
+    target = _find_user(t, payload.get("email", "")) if t else None
+    if not target:
+        raise HTTPException(404, "User not found")
+
+    now = time.time()
+    target["password"] = _hash_password(body.new_password)
+    target["tokens_valid_after"] = now   # invalidate the reset token + old sessions
+    _save_tenants()
+    _write_audit_event("auth.password_reset", tenant=payload.get("tenant"),
+                       email=payload.get("email"), ip=_get_client_ip(request))
+    return {"ok": True, "message": "Password has been reset — please sign in."}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -275,7 +427,7 @@ async def invite_user(body: InviteUserBody, request: Request,
 
     new_user = {
         "email":        email,
-        "password":     body.temporary_password,
+        "password":     _hash_password(body.temporary_password),
         "role":         body.role,
         "active":       True,
         "invited_at":   _now_iso(),
@@ -290,7 +442,21 @@ async def invite_user(body: InviteUserBody, request: Request,
         ip=_get_client_ip(request),
         metadata={"invited_email": email, "role": body.role},
     )
-    return {"ok": True, "user": _public_user(new_user)}
+
+    # Best-effort invite email with the temporary password + login link.
+    emailed = False
+    if email_provider():
+        base = email_public_base_url() or str(request.base_url).rstrip("/")
+        ws = tenant.get("name", _user["tenant"])
+        html = (
+            f"<p>You've been invited to the <b>{ws}</b> workspace on xREF DataMapper.</p>"
+            f"<p>Workspace: <b>{_user['tenant']}</b><br>Email: <b>{email}</b><br>"
+            f"Temporary password: <b>{body.temporary_password}</b></p>"
+            f"<p><a href=\"{base}/login\">Sign in</a> and change your password.</p>"
+        )
+        emailed = await send_email(email, f"You're invited to {ws} on xREF", html)
+
+    return {"ok": True, "user": _public_user(new_user), "emailed": emailed}
 
 
 @router.patch("/api/auth/users/{email}")
@@ -318,6 +484,9 @@ async def patch_user(email: str, body: PatchUserBody, request: Request,
         if is_self and body.active is False:
             raise HTTPException(400, "You cannot deactivate your own account")
         target["active"] = bool(body.active)
+        if body.active is False:
+            # Immediately invalidate any tokens the deactivated user still holds.
+            target["tokens_valid_after"] = time.time()
 
     if body.display_name is not None:
         target["display_name"] = body.display_name
@@ -373,23 +542,36 @@ async def change_password(body: ChangePasswordBody, request: Request):
     if not target:
         raise HTTPException(404, "User record missing — re-login")
 
-    if target.get("password") != body.current_password:
+    if not _verify_password(body.current_password, target.get("password", "")):
         _write_audit_event(
             "auth.password_change_fail", tenant=user_ctx["tenant"],
             email=user_ctx["email"], ip=_get_client_ip(request),
             metadata={"reason": "bad_current_password"},
         )
         raise HTTPException(401, "Current password is incorrect")
-    if not body.new_password or len(body.new_password) < 4:
-        raise HTTPException(422, "New password must be at least 4 characters")
+    if not body.new_password or len(body.new_password) < 8:
+        raise HTTPException(422, "New password must be at least 8 characters")
 
-    target["password"] = body.new_password
+    now = time.time()
+    target["password"] = _hash_password(body.new_password)
+    # Invalidate all existing sessions for this user, then mint a fresh token
+    # (iat = now) so the caller who just changed their password stays signed in.
+    target["tokens_valid_after"] = now
     _save_tenants()
     _write_audit_event(
         "auth.password_changed", tenant=user_ctx["tenant"],
         email=user_ctx["email"], ip=_get_client_ip(request),
     )
-    return {"ok": True, "message": "Password changed"}
+    new_token = _sign_token({
+        "tenant": user_ctx["tenant"],
+        "tenant_name": user_ctx.get("tenant_name", user_ctx["tenant"]),
+        "email": user_ctx["email"],
+        "role": target.get("role", "readonly"),
+        "plan": tenant.get("plan", "standard"),
+        "exp": now + _AUTH_TOKEN_TTL,
+        "iat": now,
+    })
+    return {"ok": True, "message": "Password changed", "token": new_token}
 
 
 # ─────────────────────────────────────────────────────────────────────────────

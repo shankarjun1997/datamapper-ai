@@ -33,6 +33,11 @@ venv/
 env/
 ENV/
 
+# ── Node / frontend build ──────────────────────────────────
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
 # ── macOS ──────────────────────────────────────────────────
 .DS_Store
 .AppleDouble

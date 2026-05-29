@@ -23,6 +23,21 @@ from starlette.requests import Request as StarletteRequest
 from app.core.logging_config import setup_logging
 setup_logging()
 
+# Optional error tracking — activated only when SENTRY_DSN is set.
+_SENTRY_DSN = os.getenv("SENTRY_DSN", "")
+if _SENTRY_DSN:
+    try:
+        import sentry_sdk
+        sentry_sdk.init(
+            dsn=_SENTRY_DSN,
+            environment=os.getenv("DM_ENV", "dev"),
+            traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
+            send_default_pii=False,
+        )
+    except Exception as _se:  # pragma: no cover - depends on env
+        import logging as _logging
+        _logging.getLogger("xref_agent").warning("Sentry init failed: %s", _se)
+
 from app.config import _ALLOWED_ORIGINS, _STATIC, logger
 from app.state import (
     _load_audit_events,
@@ -63,6 +78,29 @@ def _validate_startup_secrets() -> list[str]:
             warnings.append("No LLM API key configured in production (ANTHROPIC_API_KEY / OPENAI_API_KEY / DEEPSEEK_API_KEY)")
         if not jwt_secret:
             raise RuntimeError("JWT_SECRET must be set in production — refusing to start")
+        # The signing secret used by app.core.auth must also be strong.
+        xref_secret = os.getenv("XREF_SECRET_KEY", "")
+        if not xref_secret or any(
+            w in xref_secret.lower()
+            for w in ["change", "secret", "example", "default", "placeholder", "demo", "xref"]
+        ):
+            raise RuntimeError(
+                "XREF_SECRET_KEY must be set to a strong, non-placeholder value in production — refusing to start"
+            )
+        if os.getenv("XREF_REQUIRE_AUTH", "true").lower() != "true":
+            raise RuntimeError(
+                "XREF_REQUIRE_AUTH cannot be disabled in production — refusing to start"
+            )
+        if not os.getenv("XREF_ADMIN_PASSWORD"):
+            warnings.append(
+                "XREF_ADMIN_PASSWORD not set — the bootstrap admin has no usable "
+                "password; provision an admin via env or the tenant store"
+            )
+        if not os.getenv("DM_ENCRYPTION_KEY"):
+            warnings.append(
+                "DM_ENCRYPTION_KEY not set — secrets (GCP keys, DB connection "
+                "strings, API keys) are stored at rest in plaintext"
+            )
     return warnings
 
 
@@ -95,6 +133,14 @@ async def lifespan(app_: FastAPI):
             db_mode = False
 
     if not db_mode:
+        # In production, in-memory/JSON state is not durable (lost on restart,
+        # can't scale to multiple instances). Refuse to start so a client never
+        # silently runs on disposable storage.
+        if os.getenv("DM_ENV", "dev") == "production":
+            raise RuntimeError(
+                "Postgres is required in production but the database is not reachable. "
+                "Set a valid DATABASE_URL (and run `alembic upgrade head`) before starting."
+            )
         logger.info("Running in file mode (JSON)")
 
     _load_sessions()
@@ -164,12 +210,14 @@ def _migrate_json_files_to_db(migrate_json_to_db) -> None:
 app = FastAPI(title="xREF Agent", version="2.0.0", lifespan=lifespan)
 
 # CORS
+# Credentials (cookies) can only be allowed with explicit origins, never "*".
+_CORS_CREDENTIALS = _ALLOWED_ORIGINS != ["*"]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_ALLOWED_ORIGINS,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
-    allow_headers=["Content-Type", "Authorization", "X-Session-Id"],
-    allow_credentials=False,
+    allow_headers=["Content-Type", "Authorization", "X-Session-Id", "X-CSRF-Token"],
+    allow_credentials=_CORS_CREDENTIALS,
     max_age=600,
 )
 
@@ -177,8 +225,9 @@ app.add_middleware(
 # Security headers
 _CSP = (
     "default-src 'self'; "
-    "script-src 'self' 'unsafe-inline' "
-        "https://cdn.tailwindcss.com https://unpkg.com https://cdnjs.cloudflare.com; "
+    # 'unsafe-inline' remains until the frontend moves to a bundled (Vite) build
+    # with hashed scripts; the unused CDN allowances have been removed.
+    "script-src 'self' 'unsafe-inline'; "
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
     "font-src 'self' https://fonts.gstatic.com; "
     "connect-src 'self'; "
@@ -201,6 +250,100 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
 
 app.add_middleware(SecurityHeadersMiddleware)
+
+
+# ── Tenant isolation (defense-in-depth chokepoint) ─────────────────────────────
+# Every session-scoped route is reached at /api/sessions/{uuid}/... (and the
+# admin variants). Rather than thread a tenant check through ~40 handlers, we
+# enforce it once here: if the bearer token's tenant doesn't own the session in
+# the URL, return 404. Unauthenticated callers are left to the per-route auth
+# guards — this layer only blocks *confirmed* cross-tenant access.
+import re as _re
+from starlette.responses import JSONResponse as _JSONResponse
+from app.core.auth import (
+    _CSRF_COOKIE,
+    _extract_token,
+    _get_tenant_from_request,
+    _token_is_from_cookie,
+    _verify_token,
+)
+from app.core.session_store import _tenant_can_access
+from app.state import _sessions as _sessions_map
+from app.config import _ADMIN_TENANT as _ADMIN_TENANT_SLUG, _REQUIRE_AUTH
+
+_SID_PATH_RE = _re.compile(
+    r"/sessions/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"
+)
+
+
+class TenantIsolationMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        m = _SID_PATH_RE.search(request.url.path)
+        if m:
+            sid = m.group(1)
+            caller_tenant = _get_tenant_from_request(request)
+            if caller_tenant:  # only enforce for authenticated callers
+                session = _sessions_map.get(sid)
+                if session is not None and not _tenant_can_access(caller_tenant, session):
+                    logger.warning(
+                        "Blocked cross-tenant session access",
+                        extra={
+                            "path": str(request.url.path),
+                            "caller_tenant": caller_tenant,
+                            "session_tenant": session.get("tenant"),
+                        },
+                    )
+                    return _JSONResponse(
+                        {"detail": f"Session {sid!r} not found"}, status_code=404
+                    )
+        return await call_next(request)
+
+
+app.add_middleware(TenantIsolationMiddleware)
+
+
+# ── Global auth enforcement ────────────────────────────────────────────────────
+# When XREF_REQUIRE_AUTH=true (forced on in production), every /api/* route
+# requires a valid bearer token EXCEPT the public allowlist below. This closes
+# the gap where some routers carry no per-route auth dependency. Per-route RBAC
+# (require_mapper / require_admin / …) still applies on top for role granularity.
+_PUBLIC_EXACT = {
+    "/", "/index.html", "/login", "/favicon.ico",
+    "/api/health", "/api/health/detailed", "/api/ready", "/api/metrics", "/api/version",
+    "/api/providers", "/api/global-config",
+    "/api/auth/config", "/api/auth/tenants", "/api/auth/login",
+    "/api/auth/forgot-password", "/api/auth/reset-password",
+    "/api/auth/oidc/config", "/api/auth/oidc/login", "/api/auth/oidc/callback",
+}
+_PUBLIC_PREFIXES = ("/api/auth/tenant/", "/static/", "/assets/")
+
+
+class AuthEnforcementMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: StarletteRequest, call_next):
+        if _REQUIRE_AUTH and request.method != "OPTIONS":
+            path = request.url.path
+            protected = (
+                path.startswith("/api/")
+                and path not in _PUBLIC_EXACT
+                and not path.startswith(_PUBLIC_PREFIXES)
+            )
+            if protected:
+                token = _extract_token(request)
+                if not token or not _verify_token(token):
+                    return _JSONResponse({"detail": "Authentication required"}, status_code=401)
+
+                # CSRF: cookie-authenticated unsafe requests must echo the CSRF
+                # cookie in the X-CSRF-Token header (double-submit). Bearer/query
+                # token requests aren't a CSRF vector and are exempt.
+                if request.method in ("POST", "PUT", "PATCH", "DELETE") and _token_is_from_cookie(request):
+                    header_csrf = request.headers.get("X-CSRF-Token", "")
+                    cookie_csrf = request.cookies.get(_CSRF_COOKIE, "")
+                    if not header_csrf or header_csrf != cookie_csrf:
+                        return _JSONResponse({"detail": "CSRF token missing or invalid"}, status_code=403)
+        return await call_next(request)
+
+
+app.add_middleware(AuthEnforcementMiddleware)
 
 
 # ── Request logging + request-id propagation ──────────────────────────────────

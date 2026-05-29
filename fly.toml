@@ -10,6 +10,10 @@ primary_region = "maa"
 
 [env]
   PORT = "7788"
+  DM_ENV = "production"          # enables auth enforcement + HSTS/CSP + JSON logs
+  XREF_REQUIRE_AUTH = "true"
+  # Secrets (XREF_SECRET_KEY, XREF_ADMIN_PASSWORD, LLM_API_KEY, DATABASE_URL,
+  # DM_ALLOWED_ORIGINS) must be set via `fly secrets set ...` — never commit them.
 
 [http_service]
   internal_port = 7788
@@ -25,4 +29,4 @@ primary_region = "maa"
 
 [[vm]]
   size = "shared-cpu-1x"
-  memory = "256mb"
+  memory = "1024mb"   # CrewAI + LLM SDKs + pandas need headroom; 256mb will OOM

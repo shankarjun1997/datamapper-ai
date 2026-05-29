@@ -3372,7 +3372,11 @@ CREATE TABLE customers (
 
 <script>
 // ─── STATE ─────────────────────────────────────────────
-const API = window.__DM_API_URL__ || 'http://localhost:7788';
+const API = window.__DM_API_URL__ || (
+  (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+    ? `http://${location.hostname}:7788`   // local dev
+    : ''                                    // production: same-origin (backend serves this page)
+);
 let currentSession  = null;   // session object
 let allMappings     = [];
 let filterMode      = 'all';
@@ -4332,14 +4336,14 @@ async function testBQ() {
   document.getElementById('bqStatusBadge').textContent = 'Testing…';
   try {
     const r = await apiFetch(`/api/sessions/${sid}/bq-test`, 'POST');
-    msg.innerHTML = `<span style="color:var(--green)">✓ Connected!</span> Found <b>${r.tables}</b> tables: <span style="font-family:var(--mono);font-size:11px;color:var(--cyan)">${(r.table_names||[]).slice(0,6).join(', ')}</span>`;
+    msg.innerHTML = `<span style="color:var(--green)">✓ Connected!</span> Found <b>${r.tables}</b> tables: <span style="font-family:var(--mono);font-size:11px;color:var(--cyan)">${escHtml((r.table_names||[]).slice(0,6).join(', '))}</span>`;
     document.getElementById('bqStatusBadge').className   = 'badge badge-green';
     document.getElementById('bqStatusBadge').textContent  = `✓ ${r.tables} tables`;
     toast(`Connected — ${r.tables} tables found`,'success');
     // Populate right-panel preview
     renderTargetPreview(r.schema || [], `BigQuery · ${document.getElementById('bqDataset').value}`);
   } catch(e) {
-    msg.innerHTML = `<span style="color:var(--red)">✕ Error:</span> ${e}`;
+    msg.innerHTML = `<span style="color:var(--red)">✕ Error:</span> ${escHtml(String(e))}`;
     document.getElementById('bqStatusBadge').className   = 'badge badge-red';
     document.getElementById('bqStatusBadge').textContent  = 'Failed';
     toast('BQ test failed: '+e,'error');
@@ -6064,11 +6068,22 @@ function syntaxHighlight(sql) {
 }
 
 // ─── API HELPER ──────────────────────────────────────────
+function _getCookie(name) {
+  const m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
+  return m ? decodeURIComponent(m[1]) : '';
+}
 async function apiFetch(path, method='GET', body=null) {
   const token = localStorage.getItem('xref_auth_token');
   const headers = { 'Content-Type': 'application/json' };
   if (token) headers['Authorization'] = 'Bearer ' + token;
-  const opts = { method, headers };
+  // CSRF double-submit for cookie-authenticated unsafe requests.
+  if (['POST','PUT','PATCH','DELETE'].includes(method.toUpperCase())) {
+    const csrf = _getCookie('xref_csrf');
+    if (csrf) headers['X-CSRF-Token'] = csrf;
+  }
+  // Send the httpOnly auth cookie alongside the bearer header (cookie is the
+  // more secure transport; bearer remains for backward compatibility).
+  const opts = { method, headers, credentials: 'include' };
   if (body) opts.body = JSON.stringify(body);
   let r;
   try {
@@ -6099,7 +6114,7 @@ function toast(msg, type='info') {
   const el    = document.createElement('div');
   const icons = { success:'✓', error:'✕', warn:'⚠', info:'ℹ' };
   el.className = `toast ${type}`;
-  el.innerHTML = `<span>${icons[type]||'ℹ'}</span><span>${msg}</span>`;
+  el.innerHTML = `<span>${icons[type]||'ℹ'}</span><span>${escHtml(msg)}</span>`;
   stack.appendChild(el);
   setTimeout(() => el.remove(), 4500);
 }
@@ -6277,10 +6292,10 @@ async function uploadSrcBqCreds(file) {
   try {
     const r = await fetch(`${API}/api/sessions/${sid}/source-gcp-creds`, { method: 'POST', body: fd }).then(res => res.json());
     if (r.detail) throw new Error(r.detail);
-    document.getElementById('srcBqCredsStatus').innerHTML = `<span style="color:var(--green)">✓ ${r.client_email}</span>`;
+    document.getElementById('srcBqCredsStatus').innerHTML = `<span style="color:var(--green)">✓ ${escHtml(r.client_email)}</span>`;
     if (r.project_id) document.getElementById('srcBqProject').value = r.project_id;
   } catch(e) {
-    document.getElementById('srcBqCredsStatus').innerHTML = `<span style="color:var(--red)">✕ ${e}</span>`;
+    document.getElementById('srcBqCredsStatus').innerHTML = `<span style="color:var(--red)">✕ ${escHtml(String(e))}</span>`;
   }
 }
 
@@ -6316,7 +6331,7 @@ async function connectSourceBQ() {
     // Render source tree
     if (r.schema) renderSrcTree(r.schema, `BigQuery · ${project}.${dataset}`, `${r.tables} tables`);
   } catch(e) {
-    msgEl.innerHTML = `<span style="color:var(--red)">✕ ${e}</span>`;
+    msgEl.innerHTML = `<span style="color:var(--red)">✕ ${escHtml(String(e))}</span>`;
     toast('Source BQ connection failed: ' + e, 'error');
   } finally {
     btn.disabled    = false;
@@ -6360,7 +6375,7 @@ async function connectSourceDatabricks() {
     // Render source tree
     renderSrcTree(r.schema || [], `Databricks · ${document.getElementById('dbrxCatalog').value || 'catalog'}`, `${r.tables} tables`);
   } catch(e) {
-    status.innerHTML = `<span style="color:var(--red)">✕ ${e}</span>`;
+    status.innerHTML = `<span style="color:var(--red)">✕ ${escHtml(String(e))}</span>`;
     toast('Databricks connection failed: ' + e, 'error');
   } finally {
     btn.disabled    = false;
@@ -6692,7 +6707,7 @@ async function uploadTargetFiles(files) {
     const r = await fetch(`${API}/api/sessions/${sid}/target-files`, { method: 'POST', body: fd }).then(res => res.json());
     if (r.detail) throw new Error(r.detail);
 
-    msgEl.innerHTML = `<span style="color:var(--green)">✓ ${r.tables} target table(s) loaded:</span> <span style="font-family:var(--mono);font-size:11px;color:var(--cyan)">${(r.table_names||[]).join(', ')}</span>`;
+    msgEl.innerHTML = `<span style="color:var(--green)">✓ ${r.tables} target table(s) loaded:</span> <span style="font-family:var(--mono);font-size:11px;color:var(--cyan)">${escHtml((r.table_names||[]).join(', '))}</span>`;
     document.getElementById('tgtFilesStatusBadge').className   = 'badge badge-green';
     document.getElementById('tgtFilesStatusBadge').textContent  = `✓ ${r.tables} tables`;
     toast(`${r.tables} target tables uploaded · ${r.total_columns} columns`, 'success');
@@ -6702,7 +6717,7 @@ async function uploadTargetFiles(files) {
       if (schema && schema.tables) renderTargetPreview(schema.tables, 'Custom Files');
     } catch(_) {}
   } catch(e) {
-    msgEl.innerHTML = `<span style="color:var(--red)">✕ Upload failed:</span> ${e}`;
+    msgEl.innerHTML = `<span style="color:var(--red)">✕ Upload failed:</span> ${escHtml(String(e))}`;
     toast('Target files upload failed: ' + e, 'error');
   }
 }
@@ -6940,7 +6955,7 @@ async function loadAuditTrail() {
         </div>
       </div>`).join('');
   } catch(e) {
-    el.innerHTML = `<div style="color:var(--red);font-size:13px">Failed to load audit trail: ${e.message}</div>`;
+    el.innerHTML = `<div style="color:var(--red);font-size:13px">Failed to load audit trail: ${escHtml(e.message)}</div>`;
   }
 }
 
@@ -7186,7 +7201,7 @@ async function loadAdminAudit() {
     }).join('');
     const tenantSel = document.getElementById('admFilterTenant');
     const tenants = Object.keys(summary.logins_by_tenant||{});
-    tenantSel.innerHTML = '<option value="">All tenants</option>' + tenants.map(t=>`<option value="${t}">${t}</option>`).join('');
+    tenantSel.innerHTML = '<option value="">All tenants</option>' + tenants.map(t=>`<option value="${escHtml(t)}">${escHtml(t)}</option>`).join('');
     const evts = await apiFetch('/api/admin/audit?limit=500');
     _adminAllEvents = evts.events || [];
     _renderAdminEvents(_adminAllEvents);

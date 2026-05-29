@@ -11,10 +11,11 @@ from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from typing import Dict, List
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from app.core.audit import _now, _write_audit_event
+from app.core.rbac import require_readonly
 from app.core.session_store import _session_or_404
 from app.intelligence.sql_format import (
     DIALECT_RENDERERS,
@@ -22,7 +23,8 @@ from app.intelligence.sql_format import (
 )
 from app.routers._helpers import _get_client_ip
 
-router = APIRouter()
+# Exports are read operations → readonly floor (no-op in dev).
+router = APIRouter(dependencies=[Depends(require_readonly)])
 
 
 @router.get("/api/sessions/{sid}/export/csv")

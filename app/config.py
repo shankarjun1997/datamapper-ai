@@ -44,10 +44,19 @@ _JIRA_TOKEN         = os.getenv("JIRA_TOKEN", "")
 _AUTH_SECRET     = os.getenv("XREF_SECRET_KEY", "xref-demo-secret-change-in-prod-2026")
 _AUTH_TOKEN_TTL  = int(os.getenv("XREF_TOKEN_TTL_HOURS", "24")) * 3600  # seconds
 
-# Set XREF_REQUIRE_AUTH=true in production to enforce login.
-# In dev (default) auth is optional — the app works without a token,
-# using the "demo" tenant as a guest identity.
-_REQUIRE_AUTH = os.getenv("XREF_REQUIRE_AUTH", "false").lower() == "true"
+# Auth enforcement. In production we require login by default (and refuse to
+# start if it's explicitly disabled — see app/main.py). In dev auth is optional:
+# the app works without a token, using the "demo" tenant as a guest identity.
+_DM_ENV = os.getenv("DM_ENV", "dev")
+_REQUIRE_AUTH = os.getenv(
+    "XREF_REQUIRE_AUTH", "true" if _DM_ENV == "production" else "false"
+).lower() == "true"
+
+# Bootstrap admin credentials. In production there is NO hardcoded fallback —
+# XREF_ADMIN_PASSWORD must be supplied via env, otherwise the seeded admin has
+# an empty (unusable) password and the operator must provision a real one.
+_ADMIN_EMAIL    = os.getenv("XREF_ADMIN_EMAIL", "admin@infinite.io")
+_ADMIN_PASSWORD = os.getenv("XREF_ADMIN_PASSWORD", "" if _DM_ENV == "production" else "xref2026")
 
 _DEFAULT_TENANTS = [
     {
@@ -56,8 +65,8 @@ _DEFAULT_TENANTS = [
         "plan": "enterprise",
         "users": [
             {
-                "email": os.getenv("XREF_ADMIN_EMAIL", "admin@infinite.io"),
-                "password": os.getenv("XREF_ADMIN_PASSWORD", "xref2026"),
+                "email": _ADMIN_EMAIL,
+                "password": _ADMIN_PASSWORD,
                 "role": "admin",
                 "active": True,
                 "invited_at": None,
@@ -66,7 +75,12 @@ _DEFAULT_TENANTS = [
             }
         ],
     },
-    {
+]
+
+# The convenience "demo" workspace (demo/demo) is dev-only — never seeded in
+# production so there is no well-known login on a client-facing deployment.
+if _DM_ENV != "production":
+    _DEFAULT_TENANTS.append({
         "slug": "demo",
         "name": "Demo Workspace",
         "plan": "trial",
@@ -81,8 +95,7 @@ _DEFAULT_TENANTS = [
                 "display_name": "Demo Admin",
             }
         ],
-    },
-]
+    })
 
 # ── Runtime paths ─────────────────────────────────────────────────────────────
 _RUNTIME_DIR          = _PROJECT_ROOT / "runtime"

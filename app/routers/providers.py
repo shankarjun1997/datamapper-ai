@@ -10,9 +10,11 @@ import re
 from datetime import datetime, timezone
 from typing import List, Optional
 
-from fastapi import APIRouter, Body, File, HTTPException, UploadFile
+from fastapi import APIRouter, Body, Depends, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse, PlainTextResponse
 from pydantic import BaseModel
+
+from app.core.rbac import require_mapper
 
 from app.config import (
     _ANTHROPIC_API_KEY,
@@ -93,14 +95,14 @@ class APIConfig(BaseModel):
 
 
 @router.post("/api/sessions/{sid}/api-config")
-async def set_api_config(sid: str, cfg: APIConfig):
+async def set_api_config(sid: str, cfg: APIConfig, _rbac=Depends(require_mapper)):
     s = _session_or_404(sid)
     s["api_config"] = cfg.model_dump()
     return {"ok": True, "llm_mode": cfg.llm_mode or "backend"}
 
 
 @router.post("/api/sessions/{sid}/webhook-test")
-async def test_webhook(sid: str, body: dict = Body(...)):
+async def test_webhook(sid: str, body: dict = Body(...), _rbac=Depends(require_mapper)):
     """Fire a one-off webhook test POST to the supplied URL."""
     url = (body or {}).get("url", "")
     if not url:
@@ -127,7 +129,7 @@ class BQConfig(BaseModel):
 
 
 @router.post("/api/sessions/{sid}/bq-config")
-async def set_bq_config(sid: str, cfg: BQConfig):
+async def set_bq_config(sid: str, cfg: BQConfig, _rbac=Depends(require_mapper)):
     s = _session_or_404(sid)
     existing_json = s.get("bq_config", {}).get("gcp_creds_json")
     s["bq_config"] = cfg.model_dump()
@@ -156,7 +158,7 @@ async def list_datasets_for_session(sid: str):
 
 
 @router.post("/api/sessions/{sid}/bq-test")
-async def test_bq(sid: str):
+async def test_bq(sid: str, _rbac=Depends(require_mapper)):
     s = _session_or_404(sid)
     cfg     = s.get("bq_config", {})
     project = cfg.get("project") or _BQ_PROJECT
@@ -206,7 +208,7 @@ async def get_target_schema(sid: str):
 
 
 @router.post("/api/sessions/{sid}/gcp-creds")
-async def upload_gcp_creds(sid: str, file: UploadFile = File(...)):
+async def upload_gcp_creds(sid: str, file: UploadFile = File(...), _rbac=Depends(require_mapper)):
     s = _session_or_404(sid)
     content = await file.read()
     if len(content) > 64 * 1024:
@@ -231,7 +233,7 @@ async def upload_gcp_creds(sid: str, file: UploadFile = File(...)):
 
 
 @router.post("/api/sessions/{sid}/source-gcp-creds")
-async def upload_source_gcp_creds(sid: str, file: UploadFile = File(...)):
+async def upload_source_gcp_creds(sid: str, file: UploadFile = File(...), _rbac=Depends(require_mapper)):
     s = _session_or_404(sid)
     content = await file.read()
     if len(content) > 64 * 1024:
@@ -262,7 +264,7 @@ class SourceBQRequest(BaseModel):
 
 
 @router.post("/api/sessions/{sid}/source-bq")
-async def source_bq_connect(sid: str, req: SourceBQRequest):
+async def source_bq_connect(sid: str, req: SourceBQRequest, _rbac=Depends(require_mapper)):
     s = _session_or_404(sid)
     if "source_bq_config" not in s:
         s["source_bq_config"] = {}
@@ -307,7 +309,7 @@ async def source_bq_connect(sid: str, req: SourceBQRequest):
 
 
 @router.post("/api/sessions/{sid}/target-files")
-async def upload_target_files(sid: str, files: List[UploadFile] = File(...)):
+async def upload_target_files(sid: str, files: List[UploadFile] = File(...), _rbac=Depends(require_mapper)):
     s = _session_or_404(sid)
     if len(files) > 50:
         raise HTTPException(400, "Maximum 50 target files per session")
@@ -353,7 +355,7 @@ class MigrationContextRequest(BaseModel):
 
 
 @router.post("/api/sessions/{sid}/migration-context")
-async def set_migration_context(sid: str, req: MigrationContextRequest):
+async def set_migration_context(sid: str, req: MigrationContextRequest, _rbac=Depends(require_mapper)):
     s = _session_or_404(sid)
     s["migration_context"] = {
         "fk_rules":         req.fk_rules,
@@ -380,7 +382,7 @@ class TargetConnectRequest(BaseModel):
 
 
 @router.post("/api/sessions/{sid}/target-connect")
-async def connect_target_db(sid: str, req: TargetConnectRequest):
+async def connect_target_db(sid: str, req: TargetConnectRequest, _rbac=Depends(require_mapper)):
     s = _session_or_404(sid)
     try:
         result = await asyncio.to_thread(
@@ -406,7 +408,7 @@ async def connect_target_db(sid: str, req: TargetConnectRequest):
 
 
 @router.post("/api/sessions/{sid}/source-databricks")
-async def source_databricks(sid: str, req: DatabricksUnityRequest):
+async def source_databricks(sid: str, req: DatabricksUnityRequest, _rbac=Depends(require_mapper)):
     s = _session_or_404(sid)
     try:
         schema_data = await asyncio.to_thread(

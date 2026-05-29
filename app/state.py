@@ -65,9 +65,13 @@ def is_db_mode() -> bool:
 
 def _save_sessions() -> None:
     """Persist _sessions to DB (when configured) or JSON file. Best-effort."""
+    from app.core.crypto import protect_obj
     slim: Dict[str, Dict[str, Any]] = {}
     for sid, s in _sessions.items():
         slim[sid] = {k: v for k, v in s.items() if k not in _SESSION_SKIP_KEYS}
+    # Encrypt sensitive fields at the persistence boundary (deep-copies, so the
+    # live in-memory sessions keep their plaintext values).
+    slim = protect_obj(slim)
 
     if _DB_MODE:
         try:
@@ -87,10 +91,11 @@ def _save_sessions() -> None:
 def _load_sessions() -> None:
     """Load persisted sessions (DB if available, else JSON file) into memory."""
     global _sessions
+    from app.core.crypto import unprotect_obj
     if _DB_MODE:
         try:
             from app.core.db_store import db_load_all_sessions
-            loaded = db_load_all_sessions()
+            loaded = unprotect_obj(db_load_all_sessions())
             for sid, s in loaded.items():
                 s.setdefault("running", False)
                 s.setdefault("log", [])
@@ -104,7 +109,7 @@ def _load_sessions() -> None:
         return
     try:
         with open(_SESSION_STORE_PATH) as f:
-            data = json.load(f)
+            data = unprotect_obj(json.load(f))
         for sid, s in data.items():
             s.setdefault("running", False)
             s.setdefault("log", [])

@@ -579,9 +579,10 @@ html,body{height:100%;font-family:var(--sans);background:var(--bg-page);color:va
 
 <script>
 const API = (()=>{
+  if (window.__DM_API_URL__) return window.__DM_API_URL__;   // injected for split (Vercel) hosting
   const h = location.hostname;
   if (h === 'localhost' || h === '127.0.0.1') return `http://${h}:7788`;
-  return '';
+  return '';   // production same-origin (backend serves this page)
 })();
 
 // ── State ──────────────────────────────────────────────────────────────────
@@ -610,7 +611,8 @@ window.addEventListener('DOMContentLoaded', () => {
 async function verifyExistingToken(token) {
   try {
     const r = await fetch(`${API}/api/auth/me`, {
-      headers: { Authorization: `Bearer ${token}` }
+      headers: { Authorization: `Bearer ${token}` },
+      credentials: 'include',
     });
     if (r.ok) {
       const d = await r.json();
@@ -792,6 +794,7 @@ async function doLogin() {
     const r = await fetch(`${API}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ tenant: _currentTenant.slug, email, password, remember }),
     });
     const d = await r.json();
@@ -833,6 +836,7 @@ async function quickDemoLogin() {
     const r = await fetch(`${API}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
       body: JSON.stringify({ tenant: 'demo', email: 'demo@xref.ai', password: 'demo', remember: true }),
     });
     const d = await r.json();

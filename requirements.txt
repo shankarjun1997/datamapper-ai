@@ -7,6 +7,15 @@ fastapi>=0.111.0
 uvicorn[standard]>=0.30.0
 python-multipart>=0.0.9
 
+# ── Auth / password hashing ───────────────────────────────────────────────────
+bcrypt>=4.1.0
+
+# ── Error tracking (optional, activated via SENTRY_DSN) ───────────────────────
+sentry-sdk[fastapi]>=2.0.0
+
+# ── Encryption at rest (optional, activated via DM_ENCRYPTION_KEY) ────────────
+cryptography>=42.0.0
+
 # ── LLM providers ─────────────────────────────────────────────────────────────
 anthropic>=0.28.0
 openai>=1.30.0          # covers DeepSeek and any OpenAI-compatible endpoint
