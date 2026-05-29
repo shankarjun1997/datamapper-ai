@@ -56,3 +56,38 @@ def test_render_xlsx_produces_workbook():
     data = rpt.render_xlsx(spec)
     assert isinstance(data, (bytes, bytearray)) and len(data) > 0
     assert data[:2] == b"PK"  # xlsx is a zip
+
+
+def test_mappings_csv_has_header_and_rows():
+    spec = rpt.build_report_spec(SESSION, "postgres", "redshift", audit_events=AUDIT)
+    txt = rpt.render_mappings_csv(spec)
+    assert txt.splitlines()[0].startswith("src_table,")
+    assert "cust,id" in txt
+
+
+def test_verification_hash_is_stable_and_sensitive():
+    spec = rpt.build_report_spec(SESSION, "postgres", "redshift", audit_events=AUDIT)
+    h1 = rpt.verification_hash(spec)
+    h2 = rpt.verification_hash(spec)
+    assert h1 == h2 and len(h1) == 64
+    spec2 = rpt.build_report_spec(SESSION, "postgres", "snowflake", audit_events=AUDIT)
+    assert rpt.verification_hash(spec2) != h1  # target change → different hash
+
+
+def test_certificate_pdf():
+    pytest.importorskip("fpdf")
+    spec = rpt.build_report_spec(SESSION, "postgres", "redshift", audit_events=AUDIT)
+    data = rpt.render_certificate_pdf(spec)
+    assert data[:4] == b"%PDF"
+
+
+def test_bundle_zip_contains_expected_files():
+    spec = rpt.build_report_spec(SESSION, "postgres", "redshift", audit_events=AUDIT)
+    data = rpt.build_bundle_zip(spec)
+    assert data[:2] == b"PK"
+    import io as _io, zipfile
+    names = zipfile.ZipFile(_io.BytesIO(data)).namelist()
+    assert any(n.endswith(".csv") for n in names)
+    assert any(n.endswith(".html") for n in names)
+    assert any(n.endswith(".json") for n in names)
+    assert "README.txt" in names

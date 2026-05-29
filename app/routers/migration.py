@@ -106,6 +106,38 @@ async def report_xlsx(sid: str, request: Request,
     )
 
 
+@router.get("/api/sessions/{sid}/certificate.pdf")
+async def certificate_pdf(sid: str, request: Request,
+                          source_platform=None, target_platform=None):
+    _s, spec = _spec_for(sid, source_platform, target_platform)
+    try:
+        data = _report.render_certificate_pdf(spec)
+    except Exception as e:
+        raise HTTPException(503, f"PDF generation unavailable: {e}")
+    _write_audit_event("certificate.issued", tenant=_s.get("tenant"), session_id=sid,
+                       ip=_get_client_ip(request),
+                       metadata={"readiness": spec["summary"]["overall_readiness"],
+                                 "hash": _report.verification_hash(spec)[:16]})
+    return StreamingResponse(
+        io.BytesIO(data), media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="readiness_certificate_{sid[:8]}.pdf"'},
+    )
+
+
+@router.get("/api/sessions/{sid}/bundle.zip")
+async def bundle_zip(sid: str, request: Request,
+                     source_platform=None, target_platform=None):
+    _s, spec = _spec_for(sid, source_platform, target_platform)
+    data = _report.build_bundle_zip(spec)
+    _write_audit_event("bundle.exported", tenant=_s.get("tenant"), session_id=sid,
+                       ip=_get_client_ip(request),
+                       metadata={"hash": _report.verification_hash(spec)[:16]})
+    return StreamingResponse(
+        io.BytesIO(data), media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="migration_bundle_{sid[:8]}.zip"'},
+    )
+
+
 # Reference data for UIs: which platforms the readiness engine understands.
 @router.get("/api/migration/platforms")
 async def platforms():

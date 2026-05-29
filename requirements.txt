@@ -16,6 +16,9 @@ sentry-sdk[fastapi]>=2.0.0
 # ── Encryption at rest (optional, activated via DM_ENCRYPTION_KEY) ────────────
 cryptography>=42.0.0
 
+# ── PDF certificates (Migration Readiness Certificate) ────────────────────────
+fpdf2>=2.7.0
+
 # ── LLM providers ─────────────────────────────────────────────────────────────
 anthropic>=0.28.0
 openai>=1.30.0          # covers DeepSeek and any OpenAI-compatible endpoint

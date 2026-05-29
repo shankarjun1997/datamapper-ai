@@ -9,7 +9,11 @@ that replaces raw SQL DDL export.
 """
 from __future__ import annotations
 
+import csv
+import hashlib
 import io
+import json
+import zipfile
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
@@ -224,4 +228,183 @@ def render_xlsx(spec: Dict) -> bytes:
 
     buf = io.BytesIO()
     wb.save(buf)
+    return buf.getvalue()
+
+
+# ── STM mapping CSV ─────────────────────────────────────────────────────────────
+_CSV_COLS = ["src_table", "src_field", "src_type", "tgt_table", "tgt_column",
+             "tgt_type", "mapping_type", "business_logic", "confidence", "status"]
+
+
+def render_mappings_csv(spec: Dict) -> str:
+    """Source-to-target-mapping (STM) CSV — the ETL-feed format."""
+    buf = io.StringIO()
+    w = csv.DictWriter(buf, fieldnames=_CSV_COLS, extrasaction="ignore")
+    w.writeheader()
+    for mp in spec["mappings"]:
+        w.writerow({k: mp.get(k, "") for k in _CSV_COLS})
+    return buf.getvalue()
+
+
+# ── Verification hash (tamper-evidence for the certificate) ─────────────────────
+def verification_hash(spec: Dict) -> str:
+    """Deterministic digest over the material facts, so a certificate can be
+    verified against the report it was issued from."""
+    m, s = spec["meta"], spec["summary"]
+    material = {
+        "session_id": m["session_id"],
+        "source": m["source_platform"], "target": m["target_platform"],
+        "overall_readiness": s["overall_readiness"], "level": s["overall_level"],
+        "active": s["active_mappings"], "approved": s["approved_mappings"],
+        "blockers": s["blockers"],
+        "columns": sorted(f"{mp['src_table']}.{mp['src_field']}->{mp['tgt_table']}.{mp['tgt_column']}"
+                          for mp in spec["mappings"]),
+    }
+    return hashlib.sha256(json.dumps(material, sort_keys=True).encode()).hexdigest()
+
+
+# ── Migration Readiness Certificate (PDF) ───────────────────────────────────────
+def render_certificate_pdf(spec: Dict) -> bytes:
+    """One-page, branded readiness certificate — the migration sign-off artifact."""
+    from fpdf import FPDF  # pure-python, no system deps
+
+    def _l1(x):  # core fonts are Latin-1 only; sanitize user/dynamic text
+        return (str(x).replace("→", "->").replace("—", "-").replace("–", "-")
+                .replace("’", "'").replace("•", "-")
+                .encode("latin-1", "replace").decode("latin-1"))
+
+    m, s = spec["meta"], spec["summary"]
+    lvl = s["overall_level"]
+    rgb = {"ready": (16, 185, 129), "review": (14, 165, 233),
+           "risk": (245, 158, 11), "blocker": (239, 68, 68)}.get(lvl, (100, 116, 139))
+    approved_pct = round(100 * s["approved_mappings"] / s["active_mappings"]) if s["active_mappings"] else 0
+    vhash = verification_hash(spec)
+
+    pdf = FPDF(orientation="P", unit="mm", format="A4")
+    pdf.set_auto_page_break(False)
+    pdf.add_page()
+
+    # Accent header bar
+    pdf.set_fill_color(*rgb)
+    pdf.rect(0, 0, 210, 6, style="F")
+
+    pdf.set_xy(15, 22)
+    pdf.set_text_color(20, 24, 28)
+    pdf.set_font("Helvetica", "B", 22)
+    pdf.cell(0, 10, "Migration Readiness Certificate")
+    pdf.set_xy(15, 34)
+    pdf.set_font("Helvetica", "", 12)
+    pdf.set_text_color(110, 116, 128)
+    pdf.cell(0, 8, _l1(f"{m['name']}   |   {m['source_platform']} -> {m['target_platform']}"))
+
+    # Score block
+    pdf.set_fill_color(248, 249, 251)
+    pdf.rect(15, 50, 180, 34, style="F")
+    pdf.set_xy(22, 55)
+    pdf.set_text_color(*rgb)
+    pdf.set_font("Helvetica", "B", 40)
+    pdf.cell(40, 24, str(s["overall_readiness"]))
+    pdf.set_xy(62, 58)
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.cell(0, 8, f"{lvl.upper()}")
+    pdf.set_xy(62, 68)
+    pdf.set_text_color(110, 116, 128)
+    pdf.set_font("Helvetica", "", 10)
+    pdf.cell(0, 6, "overall readiness score (0-100)")
+
+    # Gates
+    gates = [
+        ("Blockers", str(s["blockers"]), s["blockers"] == 0),
+        ("Approved", f"{approved_pct}%", approved_pct == 100),
+        ("Mappings", str(s["active_mappings"]), s["active_mappings"] > 0),
+        ("Versions", str(spec["governance"]["versions"]), True),
+    ]
+    x = 15
+    for label, val, ok in gates:
+        pdf.set_fill_color(245, 247, 249)
+        pdf.rect(x, 92, 42, 24, style="F")
+        pdf.set_xy(x, 96)
+        pdf.set_text_color(20, 24, 28)
+        pdf.set_font("Helvetica", "B", 16)
+        pdf.cell(42, 8, val, align="C")
+        pdf.set_xy(x, 106)
+        pdf.set_text_color(120, 130, 140)
+        pdf.set_font("Helvetica", "", 9)
+        pdf.cell(42, 6, f"{label} {'PASS' if ok else 'CHECK'}", align="C")
+        x += 46
+
+    # Sign-off
+    pdf.set_xy(15, 128)
+    pdf.set_text_color(20, 24, 28)
+    pdf.set_font("Helvetica", "B", 12)
+    pdf.cell(0, 8, "Sign-off")
+    approvals = spec["governance"]["approval_events"]
+    last_by = approvals[-1].get("email", "") if approvals else ""
+    last_ts = (approvals[-1].get("ts", "") if approvals else "")[:19]
+    y = 138
+    for role in ("Analyst", "Architect", "Lead"):
+        pdf.set_xy(15, y)
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(110, 116, 128)
+        pdf.cell(30, 8, role + ":")
+        pdf.set_draw_color(200, 205, 212)
+        pdf.line(45, y + 7, 120, y + 7)
+        y += 12
+    if last_by:
+        pdf.set_xy(125, 138)
+        pdf.set_font("Helvetica", "", 9)
+        pdf.set_text_color(110, 116, 128)
+        pdf.multi_cell(70, 5, _l1(f"Last approval event:\n{last_by}\n{last_ts}"))
+
+    # Verification + footer
+    pdf.set_xy(15, 182)
+    pdf.set_font("Helvetica", "", 8)
+    pdf.set_text_color(140, 146, 156)
+    pdf.multi_cell(180, 4,
+                   f"Verification hash (SHA-256): {vhash}\n"
+                   f"Issued: {m['generated_at'][:19]}  |  Tenant: {m['tenant']}  |  Session: {m['session_id']}")
+    pdf.set_xy(15, 280)
+    pdf.set_font("Helvetica", "", 8)
+    pdf.cell(0, 4, "Generated by xREF DataMapper - migration decision artifact. Verify the hash against the source report.")
+
+    out = pdf.output()
+    return bytes(out)
+
+
+# ── Change-management bundle (ZIP) ──────────────────────────────────────────────
+def build_bundle_zip(spec: Dict, include_pdf: bool = True) -> bytes:
+    """A single ZIP an architect can hand to their Change Advisory Board:
+    report + mapping CSV/XLSX + readiness certificate + audit log + lineage."""
+    sid = spec["meta"]["session_id"][:8]
+    vhash = verification_hash(spec)
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr(f"mapping_report_{sid}.html", render_html(spec))
+        z.writestr(f"mapping_report_{sid}.xlsx", render_xlsx(spec))
+        z.writestr(f"mappings_{sid}.csv", render_mappings_csv(spec))
+        z.writestr(f"audit_log_{sid}.json",
+                   json.dumps(spec["governance"]["audit_events"], indent=2))
+        z.writestr(f"lineage_{sid}.json", json.dumps(spec["lineage"], indent=2))
+        if include_pdf:
+            try:
+                z.writestr(f"readiness_certificate_{sid}.pdf", render_certificate_pdf(spec))
+            except Exception:
+                pass  # fpdf unavailable — bundle still useful without the cert
+        manifest = (
+            "xREF DataMapper — Change-Management Bundle\n"
+            f"Session:  {spec['meta']['session_id']}\n"
+            f"System:   {spec['meta']['name']} ({spec['meta']['source_platform']} -> {spec['meta']['target_platform']})\n"
+            f"Readiness:{spec['summary']['overall_readiness']} ({spec['summary']['overall_level']})  "
+            f"Blockers: {spec['summary']['blockers']}\n"
+            f"Issued:   {spec['meta']['generated_at']}\n"
+            f"Verify:   SHA-256 {vhash}\n\n"
+            "Contents:\n"
+            "  mapping_report_*.html   — full report (open in a browser)\n"
+            "  mapping_report_*.xlsx   — report workbook\n"
+            "  mappings_*.csv          — STM spec (feed your ETL/orchestration)\n"
+            "  readiness_certificate_*.pdf — one-page sign-off certificate\n"
+            "  audit_log_*.json        — governance/audit events\n"
+            "  lineage_*.json          — source->target lineage graph\n"
+        )
+        z.writestr("README.txt", manifest)
     return buf.getvalue()
