@@ -3130,6 +3130,19 @@ CREATE TABLE customers (
 
     <!-- ── TAB: FinOps ────────────────────────────────────────────────────── -->
     <div id="stab-finops" style="display:none;max-width:860px">
+      <!-- Plan & usage (billing) -->
+      <div class="card" style="margin-bottom:16px" id="billingCard">
+        <div class="card-header">
+          <span class="card-icon">💳</span>
+          <span class="card-title">Plan &amp; Usage</span>
+          <span id="billingPlanBadge" class="badge badge-cyan" style="margin-left:8px">—</span>
+          <span id="billingRenew" style="font-size:11px;color:var(--text-3);margin-left:auto"></span>
+        </div>
+        <div class="card-body" id="billingMeters" style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <div style="color:var(--text-3);font-size:13px;grid-column:1/-1">Loading…</div>
+        </div>
+      </div>
+
       <!-- Grand total KPI row -->
       <div class="finops-grid" id="finopsKpis" style="margin-bottom:16px">
         <div class="finops-kpi cost">
@@ -5001,7 +5014,75 @@ function _foToggleSession(sid) {
   if (chev) chev.style.transform = open ? 'rotate(90deg)' : '';
 }
 
+// ─── Plan & usage (billing) ─────────────────────────────
+async function loadBilling() {
+  const box = document.getElementById('billingMeters');
+  if (!box) return;
+  try {
+    const d = await apiFetch('/api/workspace/billing');
+    const badge = document.getElementById('billingPlanBadge');
+    if (badge) badge.textContent = String(d.plan_label || d.plan || '').toUpperCase();
+    const ren = document.getElementById('billingRenew');
+    if (ren) ren.textContent = (d.period && d.period.renews_at) ? ('Renews ' + d.period.renews_at.slice(0, 10)) : '';
+    const meters = [
+      ['Seats', 'seats', 'seats'],
+      ['Sessions / mo', 'sessions', 'sessions_per_month'],
+      ['Pipeline runs / mo', 'runs', 'runs_per_month'],
+      ['Tokens / mo', 'tokens', 'monthly_tokens'],
+    ];
+    box.innerHTML = meters.map(([label, uk, lk]) => {
+      const used = d.usage[uk] || 0;
+      const lim  = d.limits[lk];
+      const pct  = d.percent_used[uk];
+      const limTxt  = (lim == null) ? '∞' : Number(lim).toLocaleString();
+      const usedTxt = Number(used).toLocaleString();
+      const color = (pct == null) ? 'var(--cyan)' : (pct >= 100 ? 'var(--red)' : (pct >= 80 ? 'var(--orange)' : 'var(--green)'));
+      const w = (pct == null) ? 6 : Math.max(2, pct);
+      return `<div>
+        <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px">
+          <span style="color:var(--text-2)">${label}</span>
+          <span style="color:var(--text-1);font-family:var(--mono)">${usedTxt} / ${limTxt}</span>
+        </div>
+        <div style="height:7px;border-radius:6px;background:var(--bg-4);overflow:hidden">
+          <div style="height:100%;width:${w}%;background:${color};transition:width .3s"></div>
+        </div></div>`;
+    }).join('') +
+      `<div style="grid-column:1/-1;display:flex;justify-content:space-between;align-items:center;margin-top:2px">
+        <span style="font-size:11px;color:var(--text-3)">Status: ${escHtml(d.status || 'active')}</span>
+        <button class="btn btn-ghost btn-sm" onclick="showUpgrade()">⤴ Upgrade plan</button>
+      </div>`;
+  } catch (e) {
+    box.innerHTML = '<div style="color:var(--text-3);font-size:13px;grid-column:1/-1">Billing unavailable: ' + escHtml(e.message || '') + '</div>';
+  }
+}
+
+function showUpgrade() {
+  apiFetch('/api/billing/plans').then(d => {
+    const plans = d.plans || {};
+    const lim = (L, k) => (L[k] == null ? '∞' : Number(L[k]).toLocaleString());
+    const rows = Object.entries(plans).map(([code, p]) => {
+      const L = p.limits || {};
+      return `<tr style="border-top:1px solid var(--border)">
+        <td style="padding:7px 10px;font-weight:600;color:var(--text-1)">${escHtml(p.label || code)}</td>
+        <td style="padding:7px 10px">${lim(L, 'seats')}</td>
+        <td style="padding:7px 10px">${lim(L, 'sessions_per_month')}</td>
+        <td style="padding:7px 10px">${lim(L, 'monthly_tokens')}</td></tr>`;
+    }).join('');
+    showModal({
+      title: 'Plans',
+      html: `<table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="color:var(--text-3);text-align:left">
+          <th style="padding:7px 10px">Plan</th><th style="padding:7px 10px">Seats</th>
+          <th style="padding:7px 10px">Sessions/mo</th><th style="padding:7px 10px">Tokens/mo</th></tr></thead>
+        <tbody>${rows}</tbody></table>
+        <p style="font-size:11.5px;color:var(--text-3);margin-top:12px">To change your plan, contact your account team. Self-serve checkout is coming soon.</p>`,
+      actions: [{ label: 'Close', fn: '', primary: false }],
+    });
+  }).catch(() => toast('Could not load plans', 'error'));
+}
+
 async function loadFinOps() {
+  loadBilling();
   const list = document.getElementById('finopsSessionList');
   list.innerHTML = '<div style="text-align:center;color:var(--text-3);padding:32px;font-size:13px">Loading…</div>';
 

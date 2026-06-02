@@ -18,9 +18,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.core.audit import _write_audit_event
-from app.core.rbac import require_admin
+from app.core import billing as _billing
+from app.core.rbac import require_admin, require_readonly
 from app.routers._helpers import _get_client_ip
-from app.state import _TENANTS, _save_tenants
+from app.state import _TENANTS, _audit_events, _save_tenants, _sessions
 
 router = APIRouter()
 
@@ -118,3 +119,18 @@ def get_tenant_secret(tenant_slug: str, name: str) -> Optional[str]:
     tenant = _TENANTS.get(tenant_slug or "") or {}
     rec = (tenant.get("secrets", {}) or {}).get((name or "").strip().upper())
     return rec.get("value") if isinstance(rec, dict) else None
+
+
+# ── Billing / plan usage (Phase 1: read-only, derived metering) ─────────────────
+@router.get("/api/billing/plans")
+async def billing_plans(_user=Depends(require_readonly)):
+    """The plan catalog (limits + features) for the upgrade UI."""
+    return {"plans": _billing.public_catalog()}
+
+
+@router.get("/api/workspace/billing")
+async def workspace_billing(_user=Depends(require_readonly)):
+    """Current plan + this period's usage vs limits for the caller's workspace."""
+    tenant = _TENANTS.get(_user["tenant"]) or {"slug": _user["tenant"]}
+    tenant.setdefault("slug", _user["tenant"])
+    return _billing.compute_billing(tenant, _sessions, _audit_events)
