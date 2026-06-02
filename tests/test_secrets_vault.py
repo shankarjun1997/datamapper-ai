@@ -32,7 +32,7 @@ def test_get_tenant_secret_returns_plaintext():
 
 
 def test_secrets_encrypted_for_disk_then_decrypted(monkeypatch):
-    crypto_mod = pytest.importorskip("cryptography.fernet")
+    pytest.importorskip("cryptography.fernet")
     from cryptography.fernet import Fernet
     monkeypatch.setenv("DM_ENCRYPTION_KEY", Fernet.generate_key().decode())
     import app.core.crypto as crypto

@@ -1,0 +1,13 @@
+name,type,nullable,sample
+vz_device_id,STRING,NO,DEV30000
+network_node,STRING,YES,NODE489
+download_speed,FLOAT64,YES,1624.51
+upload_speed,FLOAT64,YES,941.05
+latency_ms,FLOAT64,YES,96.26
+pkt_loss_pct,FLOAT64,YES,0.84
+uptime_percentage,FLOAT64,YES,95.22
+wifi_device_count,INT64,YES,2
+signal_dbm,FLOAT64,YES,-40.53
+bandwidth_util_pct,FLOAT64,YES,76.31
+security_alerts,INT64,YES,4
+fw_block_attempts,INT64,YES,1749

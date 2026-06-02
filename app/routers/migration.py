@@ -18,6 +18,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from app.core.audit import _write_audit_event
 from app.core.rbac import require_readonly
 from app.core.session_store import _session_or_404
+from app.intelligence import confidence as _conf
 from app.intelligence import lineage as _lineage
 from app.intelligence import migration_readiness as _mr
 from app.intelligence import report as _report
@@ -136,6 +137,43 @@ async def bundle_zip(sid: str, request: Request,
         io.BytesIO(data), media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="migration_bundle_{sid[:8]}.zip"'},
     )
+
+
+def _session_tables(s: dict):
+    src = (s.get("schema_data") or {}).get("tables", []) or []
+    tgt = s.get("bq_tables") or s.get("target_files_data") or []
+    return src, tgt
+
+
+def _cols_of(tables, name):
+    for t in tables or []:
+        if (t.get("name") or t.get("table")) == name:
+            return t.get("columns", []) or []
+    return []
+
+
+@router.get("/api/sessions/{sid}/suggest-tables")
+async def suggest_tables(sid: str, request: Request):
+    """Deterministic source→target table-pair suggestions (name + column-overlap)."""
+    s = _session_or_404(sid)
+    src, tgt = _session_tables(s)
+    if not tgt:
+        raise HTTPException(422, "No target schema loaded yet — connect/crawl a target first.")
+    return {"suggestions": _conf.match_tables(src, tgt)}
+
+
+@router.get("/api/sessions/{sid}/suggest-columns")
+async def suggest_columns(sid: str, request: Request, src_table: str,
+                          tgt_table: Optional[str] = None, top_k: int = 3):
+    """Top-k deterministic target-column candidates for each column of src_table
+    (blocking matcher — scoped to tgt_table if given, else all target columns)."""
+    s = _session_or_404(sid)
+    src, tgt = _session_tables(s)
+    src_cols = _cols_of(src, src_table)
+    if not src_cols:
+        raise HTTPException(404, f"Source table {src_table!r} not found")
+    tgt_cols = _cols_of(tgt, tgt_table) if tgt_table else [c for t in tgt for c in (t.get("columns") or [])]
+    return {"matches": _conf.rank_column_matches(src_cols, tgt_cols, top_k=top_k)}
 
 
 # Reference data for UIs: which platforms the readiness engine understands.

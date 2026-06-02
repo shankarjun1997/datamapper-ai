@@ -85,7 +85,8 @@ def test_bundle_zip_contains_expected_files():
     spec = rpt.build_report_spec(SESSION, "postgres", "redshift", audit_events=AUDIT)
     data = rpt.build_bundle_zip(spec)
     assert data[:2] == b"PK"
-    import io as _io, zipfile
+    import io as _io
+    import zipfile
     names = zipfile.ZipFile(_io.BytesIO(data)).namelist()
     assert any(n.endswith(".csv") for n in names)
     assert any(n.endswith(".html") for n in names)

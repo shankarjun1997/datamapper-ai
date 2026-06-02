@@ -32,13 +32,41 @@ def test_protected_route_requires_auth():
     assert r.status_code == 401
 
 
-def test_login_then_access(monkeypatch):
-    # Demo tenant exists in dev seed.
+def _auth():
     r = _client.post("/api/auth/login", json={"tenant": "demo", "email": "demo@xref.ai", "password": "demo"})
     assert r.status_code == 200
-    token = r.json()["token"]
-    # Cookie should be set httpOnly
+    return {"Authorization": f"Bearer {r.json()['token']}"}
+
+
+def test_login_then_access():
+    h = _auth()
+    r = _client.post("/api/auth/login", json={"tenant": "demo", "email": "demo@xref.ai", "password": "demo"})
     assert "xref_token" in r.cookies or any("xref_token" in c for c in r.headers.get("set-cookie", "").split(","))
-    # Bearer access works
-    r2 = _client.get("/api/sessions", headers={"Authorization": f"Bearer {token}"})
-    assert r2.status_code == 200
+    assert _client.get("/api/sessions", headers=h).status_code == 200
+
+
+def test_public_meta_endpoints():
+    assert _client.get("/api/migration/platforms").status_code == 200
+    assert _client.get("/api/version").status_code == 200
+
+
+def test_metadata_stats_authed():
+    r = _client.get("/api/metadata/stats", headers=_auth())
+    assert r.status_code == 200
+    assert "by_type" in r.json()
+
+
+def test_report_and_readiness_on_new_session():
+    h = _auth()
+    sid = _client.post("/api/sessions", headers=h, json={"name": "itest"}).json()["session_id"]
+    # readiness + report should render even with no mappings yet
+    assert _client.get(f"/api/sessions/{sid}/readiness", headers=h).status_code == 200
+    rep = _client.get(f"/api/sessions/{sid}/report", headers=h)
+    assert rep.status_code == 200 and "summary" in rep.json()
+
+
+def test_cross_tenant_session_is_404():
+    # A well-formed but non-owned session id must 404 (tenant isolation).
+    h = _auth()
+    other = "99999999-9999-4999-8999-999999999999"
+    assert _client.get(f"/api/sessions/{other}", headers=h).status_code == 404

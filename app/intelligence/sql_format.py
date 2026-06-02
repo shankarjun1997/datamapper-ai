@@ -122,7 +122,7 @@ def _format_single_sql(sql: str) -> str:
 
         if re.match(r'SELECT(\s+DISTINCT)?\b', up, re.I):
             in_col_list = True
-            in_with_cte = False
+            in_with_cte = False  # noqa: F841
             out_lines.append(line)
             continue
 

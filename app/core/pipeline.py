@@ -4,20 +4,17 @@ app/core/pipeline.py — _emit + _run_pipeline + _run_sql_generation + _build_ma
 from __future__ import annotations
 
 import asyncio
-import logging
 import os
 import re
 import time
 import uuid
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 from app.config import _BQ_DATASET, _BQ_PROJECT, _GCP_CREDS, logger
 from app.core.audit import _now, _write_audit_event
 from app.core.llm_client import _add_usage, _make_llm
 from app.core.mapping_memory import _recall_mapping_hints
 from app.core.webhooks import fire_webhook
-from app.core.session_store import _session_or_404
 from app.intelligence.business_logic import _auto_business_logic
 from app.intelligence.confidence import (
     _name_score,
@@ -319,6 +316,21 @@ async def _run_pipeline(session_id: str):
         session["bq_tables"] = bq_tables
         session["l2_done"]   = True
 
+        # Deterministically seed table-pair mappings (name + column-overlap) when
+        # the user hasn't defined any — this scopes L3 and speeds it up. Best-effort.
+        if bq_tables and not session.get("table_mappings"):
+            try:
+                from app.intelligence.confidence import match_tables
+                pairs = match_tables(src_tables, bq_tables)
+                if pairs:
+                    session["table_mappings"] = [
+                        {"src_table": p["src_table"], "tgt_table": p["tgt_table"]} for p in pairs
+                    ]
+                    await emit("stage", {"stage": "L2", "status": "info",
+                                          "msg": f"Auto-suggested {len(pairs)} table pairing(s) from column overlap"})
+            except Exception as _e:
+                logger.warning("table auto-seed skipped: %s", _e)
+
         await emit("gate", {"gate": "gate1", "status": "auto_approved",
                              "msg": "Gate 1 auto-approved — proceeding to semantic mapping"})
 
@@ -350,7 +362,7 @@ async def _run_pipeline(session_id: str):
         )
 
         fk_anchors: Dict[str, str] = {}
-        mapping_system = _build_mapping_system(session, fk_context="")
+        mapping_system = _build_mapping_system(session, fk_context="")  # noqa: F841
         session_context_str = ""
         if session.get("instructions"):
             session_context_str += f"USER INSTRUCTIONS: {session['instructions']}\n"

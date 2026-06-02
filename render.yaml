@@ -17,6 +17,8 @@ services:
         value: "true"            # every /api/* route needs a valid token
       - key: XREF_SECRET_KEY
         sync: false              # REQUIRED — strong random value, set in dashboard
+      - key: DM_ENCRYPTION_KEY
+        sync: false              # REQUIRED in prod — Fernet key (encrypts secrets at rest)
       - key: XREF_ADMIN_EMAIL
         sync: false              # bootstrap admin email
       - key: XREF_ADMIN_PASSWORD

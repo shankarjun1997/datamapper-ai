@@ -27,10 +27,9 @@ from app.core.job_store import (
 from app.core.mapping_memory import _absorb_approved_mappings
 from app.core.rbac import require_mapper, require_reviewer
 from app.core.session_store import _session_or_404
-from app.core.pipeline import _emit, _run_pipeline, _run_sql_generation
+from app.core.pipeline import _run_pipeline, _run_sql_generation
 from app.core.webhooks import fire_webhook
-from app.intelligence.confidence import _strip_vendor, _recompute_relation_types
-from app.intelligence.confidence import conf_tier
+from app.intelligence.confidence import _strip_vendor
 from app.routers._helpers import _check_rate_limit, _get_client_ip
 from app.state import _audit_log, _sessions, _sse_queues, _save_sessions
 

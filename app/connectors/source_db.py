@@ -289,7 +289,7 @@ def crawl_source_db(db_type, conn_str, schema_filter: str = "", table_filter: st
             import cx_Oracle  # type: ignore
         except ImportError:
             try:
-                import oracledb as cx_Oracle  # type: ignore
+                import oracledb as cx_Oracle  # type: ignore  # noqa: F401
             except ImportError:
                 raise RuntimeError(f"Driver for oracle not installed. Run: {_DB_INSTALL_HINTS['oracle']}")
         import sqlalchemy
@@ -337,7 +337,7 @@ def crawl_source_db(db_type, conn_str, schema_filter: str = "", table_filter: st
 
     elif db_type == "databricks":
         try:
-            from databricks import sql as dbsql  # type: ignore
+            from databricks import sql as dbsql  # type: ignore  # noqa: F401
         except ImportError:
             raise RuntimeError(f"Driver for databricks not installed. Run: {_DB_INSTALL_HINTS['databricks']}")
         try:

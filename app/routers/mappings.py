@@ -11,8 +11,8 @@ from fastapi import APIRouter, Body, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.core.llm_client import _add_usage, _make_llm
-from app.core.mapping_memory import _absorb_single_correction, _recall_mapping_hints
-from app.core.crew_learnings import record_learning, pending_extraction_count
+from app.core.mapping_memory import _absorb_single_correction
+from app.core.crew_learnings import record_learning
 from app.core.pipeline import MAPPING_SYSTEM, _build_mapping_system
 from app.core.rbac import require_mapper
 from app.core.session_store import _session_or_404
@@ -24,7 +24,7 @@ from app.intelligence.confidence import (
     compute_confidence,
     conf_tier,
 )
-from app.state import _mapping_memory, _L3_SEM, _save_mapping_memory, _save_sessions, _sessions
+from app.state import _mapping_memory, _L3_SEM, _save_mapping_memory, _save_sessions
 
 router = APIRouter()
 

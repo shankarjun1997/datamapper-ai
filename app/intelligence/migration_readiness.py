@@ -144,7 +144,7 @@ def recommend_target_type(canon: Dict, target_platform: str) -> str:
 def assess(src_platform: str, src_type: str, tgt_platform: str,
            tgt_type: Optional[str] = None) -> Dict:
     """Assess one column's migration readiness. Returns score + risks + recommendation."""
-    sp, tp = normalize_platform(src_platform), normalize_platform(tgt_platform)
+    tp = normalize_platform(tgt_platform)
     src = normalize_type(src_type)
     caps = _PLATFORM[tp]
     risks: List[str] = []

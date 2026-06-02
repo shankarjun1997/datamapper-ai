@@ -97,9 +97,10 @@ def _validate_startup_secrets() -> list[str]:
                 "password; provision an admin via env or the tenant store"
             )
         if not os.getenv("DM_ENCRYPTION_KEY"):
-            warnings.append(
-                "DM_ENCRYPTION_KEY not set — secrets (GCP keys, DB connection "
-                "strings, API keys) are stored at rest in plaintext"
+            raise RuntimeError(
+                "DM_ENCRYPTION_KEY must be set in production — secrets (GCP keys, "
+                "DB connection strings, API keys) would otherwise be stored at rest "
+                "in plaintext. Refusing to start."
             )
     return warnings
 
@@ -269,7 +270,7 @@ from app.core.auth import (
 )
 from app.core.session_store import _tenant_can_access
 from app.state import _sessions as _sessions_map
-from app.config import _ADMIN_TENANT as _ADMIN_TENANT_SLUG, _REQUIRE_AUTH
+from app.config import _REQUIRE_AUTH
 
 _SID_PATH_RE = _re.compile(
     r"/sessions/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})"

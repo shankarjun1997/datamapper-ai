@@ -12,7 +12,7 @@ from typing import Optional
 
 from fastapi import Request
 
-from app.config import _AUTH_SECRET, _AUTH_TOKEN_TTL
+from app.config import _AUTH_SECRET
 from app.state import _TENANTS
 
 

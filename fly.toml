@@ -12,8 +12,8 @@ primary_region = "maa"
   PORT = "7788"
   DM_ENV = "production"          # enables auth enforcement + HSTS/CSP + JSON logs
   XREF_REQUIRE_AUTH = "true"
-  # Secrets (XREF_SECRET_KEY, XREF_ADMIN_PASSWORD, LLM_API_KEY, DATABASE_URL,
-  # DM_ALLOWED_ORIGINS) must be set via `fly secrets set ...` — never commit them.
+  # Secrets (XREF_SECRET_KEY, DM_ENCRYPTION_KEY, XREF_ADMIN_PASSWORD, LLM_API_KEY,
+  # DATABASE_URL, DM_ALLOWED_ORIGINS) must be set via `fly secrets set ...`.
 
 [http_service]
   internal_port = 7788

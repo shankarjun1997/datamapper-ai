@@ -20,7 +20,6 @@ from app.core.session_store import _session_or_404
 from app.parsers.ddl import parse_ddl
 from app.parsers.schema import parse_schema_file
 from app.routers._helpers import _check_rate_limit, _get_client_ip, _validate_upload
-from app.state import _save_sessions
 
 # All schema endpoints mutate session state → require mapper or higher
 # (no-op in dev where XREF_REQUIRE_AUTH=false).
@@ -58,6 +57,18 @@ async def upload_schema(sid: str, request: Request, file: UploadFile = File(...)
                   "columns": added_cols})
 
     total = sum(len(t["columns"]) for t in schema_data["tables"])
+
+    # Best-effort: ingest into the canonical metadata repository so Discovery,
+    # lineage, and versioning populate automatically. Never blocks the upload.
+    try:
+        from app.core.metadata_repo import ingest_schema
+        ingest_schema(s.get("tenant") or "default",
+                      system_name=s.get("filename") or sid[:8],
+                      platform=(s.get("source_db_type") or "source"),
+                      schema_data=schema_data, updated_by="")
+    except Exception:
+        pass
+
     _write_audit_event("schema.uploaded", tenant=s.get("tenant"), session_id=sid,
                        ip=_get_client_ip(request),
                        metadata={"filename": safe_name, "append": append,

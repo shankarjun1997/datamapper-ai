@@ -1,0 +1,12 @@
+name,type,nullable,sample
+customer_ref,STRING,NO,CUST10000
+open_ticket_count,INT64,YES,18
+recent_ticket_dt,DATE,YES,2026-01-06
+service_outage_events,INT64,YES,12
+last_outage_date,DATE,YES,2026-03-26
+assigned_technician,STRING,YES,Tara Strong
+installation_date,DATE,YES,2025-05-27
+router_name,STRING,YES,FiberHub
+vpn_ind,STRING,YES,Y
+backup_service_ind,STRING,YES,Y
+iot_connected_devices,INT64,YES,17

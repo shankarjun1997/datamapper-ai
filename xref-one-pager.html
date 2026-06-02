@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>xREF DataMapper — One-Pager</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0f1729; --body:#334155; --muted:#64748b; --line:#e2e8f0; --soft:#f8fafc;
+    --accent:#0e7f99; --accent2:#1599b8; --accent-soft:#e6f6fa;
+    --green:#0f9d58; --amber:#d97706; --violet:#7c3aed; --mono:'JetBrains Mono',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Inter,system-ui,sans-serif;color:var(--body);background:#eef1f5;padding:24px;line-height:1.45}
+  .page{max-width:1120px;margin:0 auto;background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:0 10px 40px rgba(15,23,41,.08)}
+  /* Header band */
+  .hdr{background:linear-gradient(120deg,#0f1729,#143b46);color:#fff;padding:22px 30px;display:flex;align-items:center;gap:16px}
+  .mk{width:42px;height:42px;border-radius:11px;background:linear-gradient(135deg,var(--accent2),var(--violet));display:grid;place-items:center;font-weight:800;font-size:20px;color:#04131b;flex-shrink:0}
+  .hdr h1{font-size:22px;font-weight:800;letter-spacing:-.3px}
+  .hdr .tag{font-size:12.5px;color:#a9bcc4;margin-top:2px}
+  .hdr .who{margin-left:auto;text-align:right;font-size:11.5px;color:#cbd5e1;max-width:330px}
+  .hdr .who b{color:#fff}
+  /* Body grid */
+  .body{padding:22px 30px 26px}
+  .h2{font-size:11px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--accent);margin-bottom:8px;display:flex;align-items:center;gap:7px}
+  .h2 .n{width:18px;height:18px;border-radius:5px;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;font-size:10px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:20px 28px}
+  ul{list-style:none}
+  li{font-size:12.5px;color:var(--body);padding:3px 0 3px 16px;position:relative}
+  li::before{content:'';position:absolute;left:0;top:9px;width:6px;height:6px;border-radius:50%;background:var(--accent2)}
+  .prob li::before{background:var(--amber)}
+  /* Pipeline flow */
+  .flow{display:grid;grid-template-columns:1fr 22px 1fr 22px 1fr;align-items:stretch;gap:0;margin-top:4px}
+  .stage{background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .stage .t{font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:4px}
+  .stage .d{font-size:11px;color:var(--muted)}
+  .stage .d code{font-family:var(--mono);font-size:10px;color:var(--accent)}
+  .arr{display:grid;place-items:center;color:#94a3b8;font-size:16px}
+  .sep{height:1px;background:var(--line);margin:20px 0}
+  /* gov/acct cards */
+  .cards{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .card{border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .card.g{background:#f3fbf6;border-color:#cdeede}
+  .card.a{background:#f5f3ff;border-color:#e0d9ff}
+  .card .ct{font-size:12px;font-weight:700;color:var(--ink);margin-bottom:6px;display:flex;gap:6px;align-items:center}
+  .card li{font-size:11.5px;padding:2px 0 2px 15px}
+  .card.g li::before{background:var(--green)}
+  .card.a li::before{background:var(--violet)}
+  .foot{padding:12px 30px;border-top:1px solid var(--line);background:var(--soft);font-size:10.5px;color:var(--muted);display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px}
+  .pill{display:inline-block;font-size:10px;font-weight:700;color:var(--accent);background:var(--accent-soft);padding:2px 8px;border-radius:20px;margin-left:6px}
+  @media print{ body{background:#fff;padding:0} .page{border:none;box-shadow:none;border-radius:0} @page{size:A4 landscape;margin:10mm} }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="hdr">
+    <div class="mk">x</div>
+    <div>
+      <h1>xREF DataMapper</h1>
+      <div class="tag">Agentic source-to-target mapping for enterprise data-warehouse &amp; cloud migrations</div>
+    </div>
+    <div class="who">
+      <b>Who it's for:</b> data &amp; migration teams modernizing warehouses / moving on-prem → cloud, cloud → cloud, or consolidating databases — architects, migration leads, analysts, and governance / change-advisory boards.
+    </div>
+  </div>
+
+  <div class="body">
+    <div class="grid">
+      <!-- Problems -->
+      <div>
+        <div class="h2"><span class="n">!</span> The problem</div>
+        <ul class="prob">
+          <li>Thousands of tables/columns to map — manual source→target mapping is slow and error-prone</li>
+          <li>No way to know if a migration is safe <b>before</b> writing ETL — type mismatches surface late</li>
+          <li>No lineage or impact visibility; changes break downstream silently</li>
+          <li>Weak governance: who approved what, and can it be audited for sign-off?</li>
+        </ul>
+      </div>
+      <!-- Who/value condensed -->
+      <div>
+        <div class="h2"><span class="n">✦</span> What it delivers</div>
+        <ul>
+          <li>Confidence-scored mappings (exact · fuzzy · semantic) with human review gates</li>
+          <li>A <b>migration-readiness</b> verdict per column, table, and program — before ETL</li>
+          <li>End-to-end lineage + impact analysis from one canonical metadata model</li>
+          <li>Audit-ready governance &amp; sign-off artifacts for the change board</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="sep"></div>
+
+    <!-- Input → Processing → Output -->
+    <div class="h2"><span class="n">→</span> Input · Processing · Output</div>
+    <div class="flow">
+      <div class="stage">
+        <div class="t">📥 Input</div>
+        <div class="d">Source schemas (CSV / DDL / Excel, multi-file) or live crawl of Oracle, SQL Server, Postgres, MySQL, Snowflake, BigQuery, Redshift, Databricks. Optional target schema + business context (Jira / instructions).</div>
+      </div>
+      <div class="arr">→</div>
+      <div class="stage">
+        <div class="t">⚙ Processing</div>
+        <div class="d">4-stage agentic pipeline: <code>L1</code> schema intelligence → <code>L2</code> target schema → <code>L3</code> semantic mapping + confidence → <code>L4</code> spec. Plus a readiness rules engine, lineage/impact, and a versioned metadata repository.</div>
+      </div>
+      <div class="arr">→</div>
+      <div class="stage">
+        <div class="t">📤 Output</div>
+        <div class="d">Mapping spec (STM CSV — column &amp; table level), Mapping Report (HTML / XLSX), Migration Readiness Certificate (PDF), lineage graph, and a Change-Management Bundle (ZIP) for the CAB.</div>
+      </div>
+    </div>
+
+    <div class="sep"></div>
+
+    <!-- Governance + Accountability -->
+    <div class="cards">
+      <div class="card g">
+        <div class="ct">🛡 Governance</div>
+        <ul>
+          <li>Role-based access (admin · mapper · reviewer · readonly)</li>
+          <li>Human approval gates — low-confidence mappings <b>cannot</b> be auto-approved</li>
+          <li>Versioned mappings + multi-tenant data isolation</li>
+          <li>Secrets encrypted at rest; SSO &amp; audit-log (SIEM) export</li>
+        </ul>
+      </div>
+      <div class="card a">
+        <div class="ct">⚖ Accountability</div>
+        <ul>
+          <li>Every action audited — who, what, when, from where</li>
+          <li>Sign-off workflow: Analyst → Architect → Lead</li>
+          <li>Readiness Certificate carries a SHA-256 verification hash</li>
+          <li>AI assists; a human owns the approval — full traceability</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    <span>xREF DataMapper — migrate thousands of data assets with confidence, before writing ETL.</span>
+    <span>Discovery · Mapping · Lineage · Readiness · Governance <span class="pill">enterprise</span></span>
+  </div>
+</div>
+</body>
+</html>

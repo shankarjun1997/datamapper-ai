@@ -6,7 +6,6 @@ from __future__ import annotations
 import asyncio
 import json
 import os
-import re
 from datetime import datetime, timezone
 from typing import List, Optional
 
@@ -479,7 +478,7 @@ async def health():
 @router.get("/api/health/detailed")
 async def health_detailed():
     """Deep health check — verifies each subsystem and returns per-component status."""
-    from app.state import _sessions, _audit_events, _mapping_memory
+    from app.state import _sessions, _mapping_memory
 
     checks: dict = {}
 

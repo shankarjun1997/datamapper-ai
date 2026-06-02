@@ -1,6 +1,5 @@
 """Tests for encryption-at-rest helpers (Wave 4)."""
 import importlib
-import os
 
 import pytest
 

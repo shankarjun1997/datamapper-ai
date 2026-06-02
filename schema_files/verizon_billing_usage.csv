@@ -1,0 +1,11 @@
+name,type,nullable,sample
+account_reference,STRING,NO,ACC20000
+monthly_bill_amt,FLOAT64,YES,118.65
+promo_code,STRING,YES,FIBER50
+discount_amt_usd,FLOAT64,YES,29.93
+overdue_balance_amt,FLOAT64,YES,309.52
+termination_charge,FLOAT64,YES,198.47
+consumed_data_gb,FLOAT64,YES,2002.03
+streaming_hrs,FLOAT64,YES,254.05
+gaming_hrs,FLOAT64,YES,28.44
+voip_minutes_used,INT64,YES,42

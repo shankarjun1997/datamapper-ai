@@ -1,0 +1,9 @@
+# Ruff config. We keep correctness rules (undefined names, unused imports,
+# syntax) as errors and ignore stylistic rules the codebase uses intentionally:
+#   E402 — imports after setup (e.g. setup_logging() before app imports)
+#   E701/E702 — compact `if x: return` / single-line guards
+#   E401 — multiple imports on one line
+line-length = 120
+
+[lint]
+ignore = ["E402", "E701", "E702", "E401"]

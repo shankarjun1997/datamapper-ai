@@ -3,8 +3,7 @@ app/connectors/bigquery.py — crawl_bq + list_bq_datasets + crawl_bq_project
 """
 from __future__ import annotations
 
-import logging
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 from app.config import logger
 

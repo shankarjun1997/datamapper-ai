@@ -4,14 +4,12 @@ app/routers/admin.py — /api/admin/audit + /api/audit + /api/sessions/{sid}/sum
 """
 from __future__ import annotations
 
-import calendar
 import csv
 import io
 import json
 import os
-import uuid
 from datetime import datetime, timezone
-from typing import Dict, List, Optional
+from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
@@ -216,7 +214,6 @@ Keep total under 400 words."""
 
     system = "You are a data engineering expert. Summarize a mapping session concisely."
     try:
-        from app.core.llm_client import _add_usage
         summary_text = await __import__("asyncio").to_thread(llm.complete, system, prompt, 0.1, 1024)
     except Exception as e:
         summary_text = f"Summary unavailable: {e}"

@@ -1,0 +1,13 @@
+name,type,nullable,sample
+vz_customer_key,STRING,NO,CUST10000
+vz_account_id,STRING,NO,ACC20000
+first_nm,STRING,YES,Joshua
+last_nm,STRING,YES,Coleman
+email_id,STRING,YES,carrietran@vazquez-wilson.org
+mobile_num,STRING,YES,0675804815
+cust_segment,STRING,YES,Enterprise
+tenure_mths,INT64,YES,9
+payment_mode,STRING,YES,UPI
+autopay_ind,STRING,YES,N
+nps_rating,INT64,YES,24
+risk_of_churn_pct,FLOAT64,YES,19.0

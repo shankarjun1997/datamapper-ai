@@ -119,3 +119,14 @@ For onboarding to be smooth you'll also want: a self-serve or scripted tenant-pr
 6. Harden Dockerfile, add CI, Redis rate limiting, Sentry, CORS pinning (#7, #9–11).
 
 **What's already solid:** clean module separation, RBAC primitives, audit logging with SIEM exports, OIDC support, Alembic migrations, structured JSON logging, security headers + CSP, `.env` correctly gitignored, startup secret validation. These are real foundations — the remaining work is targeted hardening, not a rewrite.
+
+---
+
+## Latest hardening pass
+
+- **Mapping intelligence wired in:** the deterministic table matcher and blocking column matcher now power `/suggest-tables` & `/suggest-columns`, and the pipeline auto-seeds table pairings (by column overlap) when none are set. Schema uploads auto-ingest into the canonical metadata repository, so Discovery / lineage / versioning populate automatically.
+- **`DM_ENCRYPTION_KEY` is now mandatory in production** — the app refuses to start without it, so secrets are never silently stored in plaintext at rest. Declared in `render.yaml` / `fly.toml`.
+- **CI lint is blocking** — `ruff.toml` curates the ruleset (correctness errors; intentional style ignored); `ruff check` is a gating CI step and the tree is lint-clean.
+- **HTTP integration tests** (TestClient) cover auth enforcement, tenant-isolation 404s, and the report/metadata/readiness endpoints (run in CI with full deps).
+
+**Still open (operational):** DB backups + restore drill, a second instance for HA, observability dashboards/alerting on `/api/metrics`, dropping CSP `unsafe-inline` (needs frontend script externalization), and adopting the React workspace app as the primary UI. The connector→vault secret fallback (`get_tenant_secret`) is built but not yet threaded through the connectors.
