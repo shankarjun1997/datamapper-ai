@@ -643,12 +643,20 @@ code,pre{font-family:var(--mono)}
 
 /* ── SIDEBAR ───────────────────────────────────────────── */
 .sidebar{
-  width:220px;background:var(--bg-1);
+  width:var(--dm-sidebar-w, 220px);background:var(--bg-1);
   border-right:1px solid var(--border);
   display:flex;flex-direction:column;
   flex-shrink:0;
   position:sticky;top:0;height:100vh;overflow-y:auto;
 }
+/* Drag handle to resize the sidebar (desktop only) */
+.sidebar-resizer{
+  position:fixed;top:0;left:var(--dm-sidebar-w, 220px);
+  width:6px;height:100vh;cursor:col-resize;z-index:60;
+  transform:translateX(-3px);transition:background .15s;
+}
+.sidebar-resizer:hover,.sidebar-resizer.dragging{background:var(--cyan);opacity:.5}
+@media(max-width:900px){ .sidebar-resizer{display:none} }
 .sidebar-brand{
   padding:20px 18px 16px;
   border-bottom:1px solid var(--border);
@@ -1845,6 +1853,7 @@ select.cell-edit{
 </nav>
 
 <!-- ─── MAIN ───────────────────────────────── -->
+<div class="sidebar-resizer" id="sidebarResizer" title="Drag to resize sidebar"></div>
 <div class="main">
   <!-- TOP BAR -->
   <div class="topbar">
@@ -3021,21 +3030,6 @@ CREATE TABLE customers (
         </div>
       </div>
 
-      <!-- Advanced: legacy raw SQL (deprecated) -->
-      <div class="card">
-        <div class="collapsible-header" style="padding:14px 16px"
-          onclick="var b=this.nextElementSibling;var o=b.style.display==='block';b.style.display=o?'none':'block';this.querySelector('.chev').textContent=o?'▸':'▾'">
-          <span class="chev">▸</span> Advanced — raw SQL (legacy)
-          <span style="font-size:10px;font-weight:600;color:var(--text-3);border:1px solid var(--border-2);border-radius:10px;padding:1px 8px;margin-left:8px">deprecated</span>
-        </div>
-        <div style="display:none;padding:0 16px 16px">
-          <p style="font-size:12.5px;color:var(--text-2);line-height:1.6;margin-bottom:12px">Raw <code style="color:var(--accent)">CREATE OR REPLACE TABLE</code> DDL. We recommend the <b>Mapping Report</b> + <b>STM CSV</b> instead — feed the spec into your own ETL (dbt / Airflow / Glue) rather than executing generated SQL, which can't encode incremental loads, CDC, or partitioning.</p>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button class="btn btn-ghost btn-sm" onclick="exportSQL()">⬇ Download .sql</button>
-            <button class="btn btn-ghost btn-sm" onclick="downloadSqlZip()">🗜 Download ZIP</button>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 
@@ -3595,10 +3589,7 @@ function initUserWidget() {
 function _gotoProviderSettings() {
   document.querySelectorAll('.user-dropdown,.topbar-dropdown').forEach(d => d.classList.remove('open'));
   showTab('settings');
-  setTimeout(() => {
-    const provTab = document.querySelector('[data-settings-tab="provider"]');
-    if (provTab) provTab.click();
-  }, 120);
+  setTimeout(() => { if (typeof switchSettingsTab === 'function') switchSettingsTab('provider'); }, 120);
 }
 
 // ── Workspace Settings: real workspace overview + security posture ──────────
@@ -3732,7 +3723,8 @@ function openTeamPanel() {
 // ── Billing/usage panel ──────────────────────────────────
 function openBillingPanel() {
   document.querySelectorAll('.user-dropdown,.topbar-dropdown').forEach(d => d.classList.remove('open'));
-  showTab('finops');
+  showTab('settings');
+  setTimeout(() => { if (typeof switchSettingsTab === 'function') switchSettingsTab('finops'); }, 120);
 }
 
 // ── My Profile modal ─────────────────────────────────────
@@ -6357,6 +6349,40 @@ function _getCookie(name) {
   const m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
   return m ? decodeURIComponent(m[1]) : '';
 }
+// ─── Resizable sidebar ──────────────────────────────────
+(function initSidebarResize(){
+  const root = document.documentElement;
+  const saved = parseInt(localStorage.getItem('dm_sidebar_w') || '', 10);
+  if (saved >= 180 && saved <= 480) root.style.setProperty('--dm-sidebar-w', saved + 'px');
+  function bind(){
+    const rz = document.getElementById('sidebarResizer');
+    if (!rz) return;
+    let dragging = false;
+    rz.addEventListener('mousedown', (e) => {
+      dragging = true; rz.classList.add('dragging');
+      document.body.style.userSelect = 'none'; e.preventDefault();
+    });
+    window.addEventListener('mousemove', (e) => {
+      if (!dragging) return;
+      const w = Math.min(480, Math.max(180, e.clientX));
+      root.style.setProperty('--dm-sidebar-w', w + 'px');
+    });
+    window.addEventListener('mouseup', () => {
+      if (!dragging) return;
+      dragging = false; rz.classList.remove('dragging'); document.body.style.userSelect = '';
+      const w = parseInt(getComputedStyle(root).getPropertyValue('--dm-sidebar-w'), 10) || 220;
+      try { localStorage.setItem('dm_sidebar_w', w); } catch (_) {}
+    });
+    // double-click resets to default
+    rz.addEventListener('dblclick', () => {
+      root.style.setProperty('--dm-sidebar-w', '220px');
+      try { localStorage.setItem('dm_sidebar_w', 220); } catch (_) {}
+    });
+  }
+  if (document.readyState !== 'loading') bind();
+  else document.addEventListener('DOMContentLoaded', bind);
+})();
+
 async function apiFetch(path, method='GET', body=null) {
   const token = localStorage.getItem('xref_auth_token');
   const headers = { 'Content-Type': 'application/json' };
@@ -7580,14 +7606,14 @@ async function loadAdminUsers() {
 }
 async function changeUserRole(email, role) {
   try {
-    await apiFetch(`/api/auth/users/${encodeURIComponent(email)}`, { method:'PATCH', body: JSON.stringify({role}) });
+    await apiFetch(`/api/auth/users/${encodeURIComponent(email)}`, 'PATCH', {role});
     toast(`Role updated → ${role}`, 'success');
     loadAdminUsers();
   } catch(e) { toast('Failed: ' + e.message, 'error'); }
 }
 async function toggleUserActive(email, active) {
   try {
-    await apiFetch(`/api/auth/users/${encodeURIComponent(email)}`, { method:'PATCH', body: JSON.stringify({active}) });
+    await apiFetch(`/api/auth/users/${encodeURIComponent(email)}`, 'PATCH', {active});
     toast(active ? 'User activated' : 'User deactivated', 'success');
     loadAdminUsers();
   } catch(e) { toast('Failed: ' + e.message, 'error'); }
@@ -7606,7 +7632,7 @@ async function submitInviteUser() {
   if (!email||!password) { toast('Email and password required', 'error'); return; }
   if (password.length<8) { toast('Password must be ≥8 characters', 'error'); return; }
   try {
-    await apiFetch('/api/auth/users/invite', { method:'POST', body: JSON.stringify({email, display_name:name, password, role}) });
+    await apiFetch('/api/auth/users/invite', 'POST', {email, display_name:name, password, role});
     toast(`Invited ${email}`, 'success');
     closeInviteUserModal();
     loadAdminUsers();
@@ -7639,14 +7665,14 @@ async function loadCrewLearnings() {
 }
 async function triggerPatternExtraction() {
   try {
-    const r = await apiFetch('/api/crew/extract-patterns', { method:'POST' });
+    const r = await apiFetch('/api/crew/extract-patterns', 'POST');
     toast(r.message||'Extraction complete', 'success');
     loadCrewLearnings();
   } catch(e) { toast('Failed: ' + e.message, 'error'); }
 }
 async function triggerSkillRefresh() {
   try {
-    const r = await apiFetch('/api/crew/refresh-skill', { method:'POST' });
+    const r = await apiFetch('/api/crew/refresh-skill', 'POST');
     toast(r.message||(r.ok?'SKILL.md refreshed':'No update needed'), r.ok?'success':'info');
   } catch(e) { toast('Failed: ' + e.message, 'error'); }
 }
