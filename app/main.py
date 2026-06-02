@@ -315,6 +315,7 @@ _PUBLIC_EXACT = {
     "/api/auth/config", "/api/auth/tenants", "/api/auth/login",
     "/api/auth/forgot-password", "/api/auth/reset-password",
     "/api/auth/oidc/config", "/api/auth/oidc/login", "/api/auth/oidc/callback",
+    "/api/billing/webhook",  # Stripe calls this unauthenticated (signature-verified)
 }
 _PUBLIC_PREFIXES = ("/api/auth/tenant/", "/static/", "/assets/")
 

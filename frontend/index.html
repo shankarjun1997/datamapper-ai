@@ -5056,6 +5056,43 @@ async function loadBilling() {
   }
 }
 
+// Shown when an action is blocked by a plan limit (HTTP 402).
+function showUpgradePrompt(message) {
+  Promise.all([
+    apiFetch('/api/workspace/billing').catch(() => ({})),
+    apiFetch('/api/billing/plans').catch(() => ({ plans: {} })),
+  ]).then(([bill, pd]) => {
+    const checkout = !!(bill && bill.checkout_enabled);
+    const plans = (pd && pd.plans) || {};
+    const order = ['standard', 'enterprise'];
+    const cards = order.filter(c => plans[c]).map(c => {
+      const L = plans[c].limits || {};
+      const lim = k => (L[k] == null ? '∞' : Number(L[k]).toLocaleString());
+      const cta = checkout
+        ? `<button class="btn btn-primary btn-sm" onclick="startCheckout('${c}')">Upgrade</button>`
+        : '';
+      return `<div style="flex:1;border:1px solid var(--border-2);border-radius:10px;padding:14px">
+        <div style="font-weight:700;color:var(--text-1);margin-bottom:6px">${escHtml(plans[c].label || c)}</div>
+        <div style="font-size:11.5px;color:var(--text-2);line-height:1.8">
+          ${lim('seats')} seats · ${lim('sessions_per_month')} sessions/mo<br>${lim('monthly_tokens')} tokens/mo</div>
+        <div style="margin-top:10px">${cta}</div></div>`;
+    }).join('');
+    showModal({
+      title: '⤴ Plan limit reached',
+      html: `<p style="font-size:13px;color:var(--text-2);margin-bottom:14px">${escHtml(message || "You've hit your plan limit.")}</p>
+        <div style="display:flex;gap:10px">${cards}</div>
+        ${checkout ? '' : '<p style="font-size:11.5px;color:var(--text-3);margin-top:12px">Contact your account team to change plans.</p>'}`,
+      actions: [{ label: 'Close', fn: '', primary: false }],
+    });
+  });
+}
+
+function startCheckout(plan) {
+  apiFetch('/api/billing/checkout', 'POST', { plan }).then(d => {
+    if (d && d.url) window.location.href = d.url;
+  }).catch(e => toast(e.message || 'Checkout unavailable', 'error'));
+}
+
 function showUpgrade() {
   apiFetch('/api/billing/plans').then(d => {
     const plans = d.plans || {};
@@ -6491,6 +6528,12 @@ async function apiFetch(path, method='GET', body=null) {
     localStorage.removeItem('xref_tenant');
     window.location.href = '/login?next=' + encodeURIComponent(location.pathname);
     throw new Error('Session expired');
+  }
+  if (r.status === 402) {
+    // Plan limit reached — show the upgrade prompt instead of a bare error.
+    const err = await r.json().catch(() => ({ detail: 'Plan limit reached' }));
+    if (typeof showUpgradePrompt === 'function') showUpgradePrompt(err.detail);
+    throw new Error(err.detail || 'Plan limit reached');
   }
   if (!r.ok) {
     const err = await r.json().catch(() => ({ detail: r.statusText }));

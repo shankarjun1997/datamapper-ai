@@ -13,6 +13,9 @@ bcrypt>=4.1.0
 # ── Error tracking (optional, activated via SENTRY_DSN) ───────────────────────
 sentry-sdk[fastapi]>=2.0.0
 
+# ── Billing (optional, activated via STRIPE_SECRET_KEY) ───────────────────────
+stripe>=9.0.0
+
 # ── Encryption at rest (optional, activated via DM_ENCRYPTION_KEY) ────────────
 cryptography>=42.0.0
 
