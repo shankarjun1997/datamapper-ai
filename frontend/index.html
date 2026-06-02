@@ -3491,7 +3491,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Check backend — show status
   try {
     const up = await checkBackend();
-    if (!up) toast('Backend not running — open Terminal and run: bash demo.sh', 'error');
+    if (!up) toast('Backend not running — open Terminal and run: ./run.sh', 'error');
   } catch {}
 
   try { await loadProviderCatalog(); } catch {}
