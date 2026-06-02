@@ -26,7 +26,7 @@ _setup_logging()
 logger = logging.getLogger("xref_agent")
 
 # ── Global config (overridable per-session via user API keys) ─────────────────
-_DEFAULT_PROVIDER   = os.getenv("DM_PROVIDER", "deepseek")
+_DEFAULT_PROVIDER   = os.getenv("DM_PROVIDER", "claude")   # Anthropic by default
 _ANTHROPIC_API_KEY  = os.getenv("ANTHROPIC_API_KEY", "")
 _DEEPSEEK_API_KEY   = os.getenv("LLM_API_KEY", "")
 _DEEPSEEK_BASE_URL  = os.getenv("LLM_BASE_URL", "https://api.deepseek.com/v1")
