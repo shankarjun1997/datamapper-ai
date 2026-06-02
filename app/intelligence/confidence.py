@@ -217,41 +217,68 @@ def _name_score(src: str, tgt: str) -> float:
     return round(max(jaccard, contain, fuzzy), 4)
 
 
-_TYPE_COMPAT = {
-    ("STRING", "STRING"): 1.0, ("INT64", "INT64"): 1.0,
-    ("FLOAT64", "FLOAT64"): 1.0, ("BOOLEAN", "BOOLEAN"): 1.0,
-    ("DATE", "DATE"): 1.0, ("TIMESTAMP", "TIMESTAMP"): 1.0,
-    ("NUMERIC", "NUMERIC"): 1.0, ("BYTES", "BYTES"): 1.0,
-    ("INT64", "FLOAT64"): 0.8,  ("FLOAT64", "INT64"): 0.7,
-    ("INT64", "NUMERIC"): 0.85, ("FLOAT64", "NUMERIC"): 0.9,
-    ("NUMERIC", "FLOAT64"): 0.9, ("NUMERIC", "INT64"): 0.8,
-    ("INT64", "STRING"): 0.5,   ("STRING", "INT64"): 0.4,
-    ("FLOAT64", "STRING"): 0.5, ("STRING", "FLOAT64"): 0.4,
-    ("NUMERIC", "STRING"): 0.5, ("STRING", "NUMERIC"): 0.4,
-    ("DATE", "TIMESTAMP"): 0.9, ("TIMESTAMP", "DATE"): 0.8,
-    ("STRING", "DATE"): 0.5,    ("STRING", "TIMESTAMP"): 0.5,
-    ("DATE", "STRING"): 0.5,    ("TIMESTAMP", "STRING"): 0.5,
-    ("STRING", "BOOLEAN"): 0.4, ("BOOLEAN", "STRING"): 0.5,
-    ("FLOAT64", "BOOLEAN"): 0.2, ("INT64", "BOOLEAN"): 0.2,
+# Cross-platform category compatibility (keyed on canonical categories from
+# migration_readiness). Symmetric — looked up both ways. Same category → 1.0.
+_CAT_COMPAT = {
+    ("INTEGER", "DECIMAL"): 0.9, ("INTEGER", "FLOAT"): 0.8, ("DECIMAL", "FLOAT"): 0.9,
+    ("STRING", "TEXT"): 0.95,
+    ("DATE", "TIMESTAMP"): 0.9, ("TIMESTAMP", "TIMESTAMP_TZ"): 0.9, ("DATE", "TIMESTAMP_TZ"): 0.8,
+    ("UUID", "STRING"): 0.9, ("UUID", "TEXT"): 0.85,
+    ("BOOLEAN", "INTEGER"): 0.6, ("BOOLEAN", "STRING"): 0.5,
+    ("JSON", "STRING"): 0.7, ("JSON", "TEXT"): 0.75,
+    # numeric/temporal ↔ text casts
+    ("INTEGER", "STRING"): 0.5, ("DECIMAL", "STRING"): 0.5, ("FLOAT", "STRING"): 0.5,
+    ("INTEGER", "TEXT"): 0.5, ("DECIMAL", "TEXT"): 0.5, ("FLOAT", "TEXT"): 0.5,
+    ("DATE", "STRING"): 0.5, ("TIMESTAMP", "STRING"): 0.5, ("TIMESTAMP_TZ", "STRING"): 0.5,
+    ("BINARY", "STRING"): 0.3, ("ARRAY", "STRING"): 0.4,
 }
 
 
 def _type_score(src_type: str, tgt_type: str) -> float:
-    from app.parsers.schema import _normalize_type
-    key = (_normalize_type(src_type), _normalize_type(tgt_type))
-    return _TYPE_COMPAT.get(key, 0.3)
+    """Cross-platform type compatibility using canonical categories + precision.
+
+    Reuses the migration-readiness type model so the score is correct across
+    Oracle/Snowflake/BigQuery/etc. (not just BigQuery), and penalizes narrowing
+    (precision/length shrink)."""
+    from app.intelligence.migration_readiness import normalize_type, NUMERIC_CATS, UNKNOWN, STRING, TEXT
+    s = normalize_type(src_type)
+    t = normalize_type(tgt_type)
+    sc, tc = s["category"], t["category"]
+
+    if sc == UNKNOWN or tc == UNKNOWN:
+        base = 0.3
+    elif sc == tc:
+        base = 1.0
+    else:
+        base = _CAT_COMPAT.get((sc, tc)) or _CAT_COMPAT.get((tc, sc)) or 0.3
+
+    # Narrowing penalties (source wider than target).
+    if sc in NUMERIC_CATS and tc in NUMERIC_CATS and s.get("precision") and t.get("precision"):
+        if s["precision"] > t["precision"]:
+            base *= 0.9
+    if sc in (STRING, TEXT) and tc in (STRING, TEXT) and s.get("length") and t.get("length"):
+        if s["length"] > t["length"]:
+            base *= 0.95
+    return round(base, 3)
 
 
-def compute_confidence(name_sim: float, type_sim: float, llm_score: float | None = None) -> float:
+def compute_confidence(name_sim: float, type_sim: float, llm_score: float | None = None,
+                       value_sim: float | None = None) -> float:
     """Weighted composite confidence score.
 
     When ``llm_score`` is None (deterministic-only — no LLM signal), the name/type
-    weights are renormalized (0.60 / 0.40) so strong structural matches aren't
-    capped by a missing 0.50 LLM term."""
+    weights are renormalized so strong structural matches aren't capped by a
+    missing 0.50 LLM term. An optional ``value_sim`` (shared sample-data pattern,
+    0–1) adds a corroborating signal."""
     if llm_score is None:
-        base = name_sim * 0.60 + type_sim * 0.40
+        if value_sim is not None:
+            base = name_sim * 0.50 + type_sim * 0.30 + value_sim * 0.20
+        else:
+            base = name_sim * 0.60 + type_sim * 0.40
     else:
         base = name_sim * 0.30 + type_sim * 0.20 + llm_score * 0.50
+        if value_sim is not None:
+            base = min(1.0, base + 0.08 * value_sim)  # small corroboration boost
     if name_sim >= 0.80 and type_sim >= 0.80:
         base = max(base, 0.82)
     if name_sim >= 0.90 and type_sim >= 0.90:
@@ -300,3 +327,130 @@ def _recompute_relation_types(mappings: List[Dict]) -> None:
             m["mapping_relation"] = "M:1"
         else:
             m["mapping_relation"] = "1:1"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# (#2) Value / sample-data pattern signatures
+# ─────────────────────────────────────────────────────────────────────────────
+_VALUE_PATTERNS = [
+    ("email",    re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')),
+    ("uuid",     re.compile(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')),
+    ("date",     re.compile(r'^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2})?')),
+    ("currency", re.compile(r'^[$€£¥]\s?-?\d')),
+    ("float",    re.compile(r'^-?\d+\.\d+$')),
+    ("int",      re.compile(r'^-?\d+$')),
+    ("bool",     re.compile(r'^(true|false|yes|no|y|n|t|f)$', re.IGNORECASE)),
+    ("phone",    re.compile(r'^\+?[\d][\d\s().\-]{6,}$')),
+]
+
+
+def detect_value_pattern(sample) -> str:
+    """Classify a sample value into a coarse data pattern, or '' if unknown."""
+    s = str(sample if sample is not None else "").strip()
+    if not s:
+        return ""
+    for name, rx in _VALUE_PATTERNS:
+        if rx.match(s):
+            return name
+    return ""
+
+
+def value_affinity(src_sample, tgt_sample) -> float:
+    """1.0 if both samples share a detectable data pattern, else 0.0
+    (0.0 when either is unknown — value signal only corroborates, never blocks)."""
+    p1, p2 = detect_value_pattern(src_sample), detect_value_pattern(tgt_sample)
+    if not p1 or not p2:
+        return 0.0
+    return 1.0 if p1 == p2 else 0.0
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# (#6/#7) Deterministic TABLE matcher — name similarity + column-set overlap
+# ─────────────────────────────────────────────────────────────────────────────
+def _table_name(t: Dict) -> str:
+    return t.get("name") or t.get("table") or ""
+
+
+def _column_fingerprint(t: Dict) -> frozenset:
+    """Union of normalized column-name tokens — a table's 'schema fingerprint'."""
+    fp: set = set()
+    for c in t.get("columns", []) or []:
+        fp |= _norm_tokens(c.get("name", ""))
+    return frozenset(fp)
+
+
+def score_table_pair(src_table: Dict, tgt_table: Dict) -> float:
+    """Score a source→target table pairing: 40% name similarity + 60% Jaccard
+    overlap of their column fingerprints (column overlap dominates — that's the
+    real signal that two tables describe the same entity)."""
+    name_s = _name_score(_table_name(src_table), _table_name(tgt_table))
+    f1, f2 = _column_fingerprint(src_table), _column_fingerprint(tgt_table)
+    union = len(f1 | f2)
+    col_jacc = len(f1 & f2) / union if union else 0.0
+    return round(0.40 * name_s + 0.60 * col_jacc, 4)
+
+
+def match_tables(src_tables: List[Dict], tgt_tables: List[Dict],
+                 threshold: float = 0.25) -> List[Dict]:
+    """Propose the best target table for each source table (above threshold)."""
+    out: List[Dict] = []
+    for st in src_tables or []:
+        best, best_s = None, 0.0
+        for tt in tgt_tables or []:
+            sc = score_table_pair(st, tt)
+            if sc > best_s:
+                best, best_s = tt, sc
+        if best is not None and best_s >= threshold:
+            out.append({"src_table": _table_name(st), "tgt_table": _table_name(best),
+                        "score": best_s, "tier": conf_tier(best_s)})
+    return out
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# (#8/#9) Blocking column matcher — scale to large schemas
+# ─────────────────────────────────────────────────────────────────────────────
+def _type_category(type_str: str) -> str:
+    from app.intelligence.migration_readiness import normalize_type
+    return normalize_type(type_str)["category"]
+
+
+def rank_column_matches(src_cols: List[Dict], tgt_cols: List[Dict], top_k: int = 3) -> Dict:
+    """Return the top-k target candidates per source column.
+
+    Uses *blocking* (bucket targets by canonical type category) so we only score
+    type-compatible candidates instead of the full O(N×M) cross-product — the key
+    to scaling to 10k+ columns. Falls back to scanning all targets for source
+    columns whose category has no compatible bucket."""
+    # Pre-bucket targets by type category (+ a precomputed name cache).
+    buckets: Dict[str, List[Dict]] = {}
+    for tc in tgt_cols or []:
+        buckets.setdefault(_type_category(tc.get("type", "")), []).append(tc)
+
+    # Which target categories are worth scoring for a given source category.
+    def candidate_targets(src_cat: str) -> List[Dict]:
+        cats = {src_cat}
+        for (a, b) in _CAT_COMPAT:
+            if a == src_cat:
+                cats.add(b)
+            if b == src_cat:
+                cats.add(a)
+        cats.add("UNKNOWN")
+        cands: List[Dict] = []
+        for c in cats:
+            cands.extend(buckets.get(c, []))
+        return cands or (tgt_cols or [])  # safety: never empty if targets exist
+
+    results: Dict[str, List] = {}
+    for sc in src_cols or []:
+        s_name, s_type = sc.get("name", ""), sc.get("type", "")
+        scored = []
+        for tc in candidate_targets(_type_category(s_type)):
+            ns = _name_score(s_name, tc.get("name", ""))
+            tsc = _type_score(s_type, tc.get("type", ""))
+            scored.append((tc.get("name", ""), compute_confidence(ns, tsc, None), round(ns, 3)))
+        scored.sort(key=lambda x: x[1], reverse=True)
+        results[s_name] = [
+            {"tgt_column": n, "confidence": c, "name_sim": ns, "tier": conf_tier(c)}
+            for n, c, ns in scored[:top_k]
+        ]
+    return results
