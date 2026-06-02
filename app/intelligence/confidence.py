@@ -121,36 +121,100 @@ def _strip_vendor(name: str) -> str:
     return n
 
 
+# Generic abbreviation + token-level synonym normalization. Applied per-token so
+# it generalizes far beyond the hand-curated _DOMAIN_ALIASES (which still wins as
+# an exact whole-name concept match). A mapping may expand to multiple words.
+_TOKEN_MAP: Dict[str, str] = {
+    # abbreviations
+    "nbr": "number", "no": "number", "num": "number", "qty": "quantity",
+    "amt": "amount", "dt": "date", "ts": "timestamp", "tmstmp": "timestamp",
+    "desc": "description", "addr": "address", "cd": "code", "cde": "code",
+    "nm": "name", "flg": "flag", "pct": "percent", "perc": "percent",
+    "cnt": "count", "ind": "indicator", "fname": "first name", "lname": "last name",
+    "dob": "birth date", "yr": "year", "mo": "month", "bal": "balance",
+    "id": "id", "uid": "id", "uuid": "id", "pk": "id", "fk": "id",
+    # domain synonyms (token level)
+    "cust": "customer", "client": "customer", "subscriber": "customer", "sub": "customer",
+    "acct": "account", "org": "organization", "mobile": "phone", "cell": "phone",
+    "tel": "phone", "ph": "phone", "mail": "email", "zip": "postal",
+    "zipcode": "postal", "st": "state", "ctry": "country", "cntry": "country",
+    "prod": "product", "svc": "service", "srvc": "service", "txn": "transaction",
+    "trans": "transaction",
+}
+
+# Tokens that carry no matching signal — dropped before comparison.
+_STOPWORDS = {"the", "a", "of", "to", "field", "col", "column", "value", "val"}
+# Vendor / warehouse-layer noise tokens — dropped (but NOT domain tokens like
+# cust/acct/addr, which carry meaning and are normalized via _TOKEN_MAP).
+_DROP_TOKENS = {"src", "tgt", "stg", "raw", "ods", "dw", "dwh", "vz", "verizon",
+                "frontier", "ftr", "rpt", "dim", "fact"}
+
+
+def _split_tokens(name: str) -> List[str]:
+    """Split a name into lowercase word tokens — handles snake_case, kebab-case,
+    camelCase, and letter/digit boundaries. (No prefix stripping here — domain
+    prefixes like cust_/acct_ carry meaning and are normalized downstream.)"""
+    s = re.sub(r'(?<=[a-z0-9])(?=[A-Z])', ' ', name)                    # camelCase
+    s = re.sub(r'(?<=[A-Za-z])(?=[0-9])|(?<=[0-9])(?=[A-Za-z])', ' ', s)  # letter/digit
+    return [p for p in re.split(r'[\s_\-./]+', s.lower()) if p]
+
+
+def _norm_tokens(name: str) -> frozenset:
+    """Normalized token SET (abbreviations + synonyms expanded; stopwords and
+    vendor/layer noise tokens dropped)."""
+    out: set = set()
+    for tok in _split_tokens(name):
+        if tok in _DROP_TOKENS:
+            continue
+        for sub in _TOKEN_MAP.get(tok, tok).split():
+            if sub and sub not in _STOPWORDS and sub not in _DROP_TOKENS:
+                out.add(sub)
+    return frozenset(out)
+
+
 def _name_score(src: str, tgt: str) -> float:
-    """Composite name similarity score."""
+    """Boundary-safe name similarity using normalized token sets.
+
+    Avoids char-substring false positives (e.g. 'id' inside 'valid') by matching
+    on whole normalized tokens, and generalizes via per-token abbreviation/
+    synonym expansion."""
+    # 1) Exact canonical concept (domain alias dict) wins outright.
     c1 = _canonical_concept(src)
     c2 = _canonical_concept(tgt)
     if c1 and c2 and c1 == c2:
         return 1.0
 
-    s1 = _strip_vendor(src).lower().replace("_", "").replace("-", "")
-    s2 = _strip_vendor(tgt).lower().replace("_", "").replace("-", "")
+    t1 = _norm_tokens(src)
+    t2 = _norm_tokens(tgt)
+    if not t1 or not t2:
+        return 0.0
+    if t1 == t2:
+        return 1.0
 
-    short, long_ = (s1, s2) if len(s1) <= len(s2) else (s2, s1)
-    if short and (long_.endswith(short) or long_.startswith(short) or short in long_):
-        containment = 0.92
-        if long_.endswith(short):
-            containment = 0.95
-        sub_score = containment
-    else:
-        sub_score = 0.0
+    union = len(t1 | t2)
+    jaccard = len(t1 & t2) / union if union else 0.0
 
+    # Boundary-safe containment: one token set fully contained in the other.
+    contain = 0.0
+    if t1 <= t2 or t2 <= t1:
+        smaller, larger = (t1, t2) if len(t1) <= len(t2) else (t2, t1)
+        contain = 0.90 + 0.05 * (len(smaller) / max(len(larger), 1))
+
+    n1, n2 = " ".join(sorted(t1)), " ".join(sorted(t2))
     try:
         from rapidfuzz import fuzz
-        ratio   = fuzz.ratio(s1, s2) / 100.0
-        tsratio = fuzz.token_sort_ratio(s1, s2) / 100.0
-        cratio  = fuzz.ratio(
-            c1.replace("_", ""), c2.replace("_", "")
-        ) / 100.0 if (c1 != src.lower() or c2 != tgt.lower()) else 0.0
-        return max(ratio, tsratio, cratio, sub_score)
+        fuzzy = max(fuzz.token_set_ratio(n1, n2), fuzz.token_sort_ratio(n1, n2)) / 100.0
     except ImportError:
-        common = sum(c in s2 for c in s1)
-        return max(common / max(len(s1), len(s2), 1), sub_score)
+        a, b = n1.replace(" ", ""), n2.replace(" ", "")
+        fuzzy = sum(ch in b for ch in a) / max(len(a), len(b), 1)
+
+    # No shared concept (no token overlap or containment) → discount coincidental
+    # character similarity, so short unrelated names (e.g. 'id' vs 'void') don't
+    # score high off raw char overlap. Genuine typo-variants (>=0.85) survive.
+    if jaccard == 0 and contain == 0 and fuzzy < 0.85:
+        fuzzy *= 0.5
+
+    return round(max(jaccard, contain, fuzzy), 4)
 
 
 _TYPE_COMPAT = {
@@ -178,9 +242,16 @@ def _type_score(src_type: str, tgt_type: str) -> float:
     return _TYPE_COMPAT.get(key, 0.3)
 
 
-def compute_confidence(name_sim: float, type_sim: float, llm_score: float) -> float:
-    """Weighted composite confidence score."""
-    base = name_sim * 0.30 + type_sim * 0.20 + llm_score * 0.50
+def compute_confidence(name_sim: float, type_sim: float, llm_score: float | None = None) -> float:
+    """Weighted composite confidence score.
+
+    When ``llm_score`` is None (deterministic-only — no LLM signal), the name/type
+    weights are renormalized (0.60 / 0.40) so strong structural matches aren't
+    capped by a missing 0.50 LLM term."""
+    if llm_score is None:
+        base = name_sim * 0.60 + type_sim * 0.40
+    else:
+        base = name_sim * 0.30 + type_sim * 0.20 + llm_score * 0.50
     if name_sim >= 0.80 and type_sim >= 0.80:
         base = max(base, 0.82)
     if name_sim >= 0.90 and type_sim >= 0.90:
