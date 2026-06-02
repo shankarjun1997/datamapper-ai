@@ -137,6 +137,41 @@ def compute_billing(tenant: Dict, sessions: Dict, audit_events: List[Dict],
     }
 
 
+_USAGE_TO_LIMIT = {"sessions": "sessions_per_month", "runs": "runs_per_month",
+                   "tokens": "monthly_tokens", "seats": "seats"}
+# Which usage metrics gate each action.
+_ACTION_METRICS = {"create_session": ["sessions"], "run_pipeline": ["runs", "tokens"]}
+
+
+def check_quota(tenant: Dict, action: str, sessions: Dict, audit_events: List[Dict],
+                now: Optional[datetime] = None, admin_tenant: str = "infinite") -> Dict:
+    """Decide whether ``action`` is allowed for the tenant under its plan.
+
+    Returns {allowed, hard, warn, metric, used, limit, percent, message}. Hard
+    block at >=100% (allowed=False), soft warning at >=80%. Unlimited limits and
+    the super-admin tenant are always allowed."""
+    if (tenant.get("slug") or "") == admin_tenant:
+        return {"allowed": True, "hard": False, "warn": False}
+
+    rep = compute_billing(tenant, sessions, audit_events, now=now)
+    result = {"allowed": True, "hard": False, "warn": False, "plan": rep["plan"]}
+    for m in _ACTION_METRICS.get(action, []):
+        pct = rep["percent_used"].get(m)
+        if pct is None:  # unlimited
+            continue
+        used = rep["usage"].get(m, 0)
+        limit = rep["limits"].get(_USAGE_TO_LIMIT[m])
+        if pct >= 100:
+            return {"allowed": False, "hard": True, "warn": False, "plan": rep["plan"],
+                    "metric": m, "used": used, "limit": limit, "percent": pct,
+                    "message": (f"{rep['plan_label']} plan limit reached for {m} "
+                                f"({used}/{limit} this month). Upgrade to continue.")}
+        if pct >= 80 and not result["warn"]:
+            result.update({"warn": True, "metric": m, "used": used, "limit": limit, "percent": pct,
+                           "message": f"Approaching your {rep['plan_label']} {m} limit ({pct}% used)."})
+    return result
+
+
 def public_catalog() -> Dict:
     """Plan catalog for the upgrade UI (limits + labels + features)."""
     return {code: {"label": p["label"], "limits": p["limits"], "features": p["features"]}

@@ -31,7 +31,19 @@ from app.core.pipeline import _run_pipeline, _run_sql_generation
 from app.core.webhooks import fire_webhook
 from app.intelligence.confidence import _strip_vendor
 from app.routers._helpers import _check_rate_limit, _get_client_ip
-from app.state import _audit_log, _sessions, _sse_queues, _save_sessions
+from app.state import _TENANTS, _audit_events, _audit_log, _sessions, _sse_queues, _save_sessions
+from app.config import _ADMIN_TENANT
+from app.core import billing as _billing
+
+
+def _enforce_run_quota(s: dict) -> None:
+    """Raise 402 if the session's tenant has hit its monthly run/token limit."""
+    tenant = s.get("tenant") or "default"
+    tobj = _TENANTS.get(tenant) or {"slug": tenant}
+    tobj.setdefault("slug", tenant)
+    q = _billing.check_quota(tobj, "run_pipeline", _sessions, _audit_events, admin_tenant=_ADMIN_TENANT)
+    if not q.get("allowed", True):
+        raise HTTPException(402, q.get("message", "Plan run limit reached — upgrade to continue."))
 
 router = APIRouter()
 
@@ -138,6 +150,7 @@ async def run_pipeline(sid: str, request: Request, _user=Depends(require_mapper)
         raise HTTPException(409, "Pipeline already running")
     if not s.get("schema_data"):
         raise HTTPException(422, "Upload a schema file first")
+    _enforce_run_quota(s)
     s["status"]  = "running"
     s["running"] = True
     s["error"]   = None
@@ -172,6 +185,7 @@ async def run_pipeline_async(sid: str, request: Request, user=Depends(require_ma
         raise HTTPException(409, "Pipeline already running")
     if not s.get("schema_data"):
         raise HTTPException(422, "Upload a schema file first")
+    _enforce_run_quota(s)
 
     tenant = _tenant_of(user, s)
 

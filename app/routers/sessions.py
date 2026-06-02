@@ -6,15 +6,17 @@ from __future__ import annotations
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
+from app.config import _ADMIN_TENANT
+from app.core import billing as _billing
 from app.core.audit import _now, _write_audit_event
 from app.core.auth import _get_tenant_from_request, _verify_token
 from app.core.rbac import require_readonly
 from app.core.session_store import _session_or_404
 from app.routers._helpers import _get_client_ip
-from app.state import _sessions, _save_sessions
+from app.state import _TENANTS, _audit_events, _sessions, _save_sessions
 
 # Router-level auth floor: every endpoint requires at least a readonly,
 # authenticated user (no-op in dev where XREF_REQUIRE_AUTH=false).
@@ -29,6 +31,15 @@ class SessionCreate(BaseModel):
 @router.post("/api/sessions")
 async def create_session(request: Request, body: Optional[SessionCreate] = None):
     tenant = _get_tenant_from_request(request) or "default"
+
+    # Plan quota: block at the monthly session limit (super-admin/unlimited exempt).
+    _tenant_obj = _TENANTS.get(tenant) or {"slug": tenant}
+    _tenant_obj.setdefault("slug", tenant)
+    _quota = _billing.check_quota(_tenant_obj, "create_session", _sessions, _audit_events,
+                                  admin_tenant=_ADMIN_TENANT)
+    if not _quota.get("allowed", True):
+        raise HTTPException(402, _quota.get("message", "Plan limit reached — upgrade to continue."))
+
     sid = str(uuid.uuid4())
     # Resolve the creating user up front so we can stamp it on the session for
     # later GDPR erasure queries.
@@ -63,7 +74,10 @@ async def create_session(request: Request, body: Optional[SessionCreate] = None)
     _write_audit_event("session.created", tenant=tenant, email=email,
                        session_id=sid, ip=_get_client_ip(request),
                        metadata={"name": _sessions[sid]["name"]})
-    return {"session_id": sid}
+    resp = {"session_id": sid}
+    if _quota.get("warn"):
+        resp["warning"] = _quota.get("message")
+    return resp
 
 
 @router.get("/api/sessions")

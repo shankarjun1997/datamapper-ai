@@ -485,6 +485,34 @@ async def list_tenants(request: Request, _user=Depends(require_admin)):
     return {"tenants": result, "total": len(result)}
 
 
+@router.post("/api/admin/tenants/{slug}/plan")
+async def set_tenant_plan(slug: str, request: Request, body: dict = Body(...),
+                          _user=Depends(require_admin)):
+    """Assign a plan (+ optional limit overrides) to a tenant. Super-admin only."""
+    auth_header = request.headers.get("Authorization", "")
+    payload = _verify_token(auth_header[7:]) if auth_header.startswith("Bearer ") else {}
+    if payload.get("tenant") != _ADMIN_TENANT:
+        raise HTTPException(403, "Super-admin access required")
+    from app.core.billing import PLAN_CATALOG
+    plan = (body.get("plan") or "").lower()
+    if plan not in PLAN_CATALOG:
+        raise HTTPException(422, f"Unknown plan '{plan}'. One of {list(PLAN_CATALOG)}")
+    t = _tenants.get(slug)
+    if not t:
+        raise HTTPException(404, f"Tenant '{slug}' not found")
+    t["plan"] = plan
+    overrides = body.get("overrides")
+    if isinstance(overrides, dict):
+        allowed = ("seats", "sessions_per_month", "runs_per_month", "monthly_tokens")
+        t.setdefault("billing", {})["overrides"] = {k: v for k, v in overrides.items() if k in allowed}
+    _save_tenants()
+    _write_audit_event("admin.plan_assigned", tenant=payload.get("tenant"),
+                       email=payload.get("email"), ip=_get_client_ip(request),
+                       metadata={"target_tenant": slug, "plan": plan})
+    return {"ok": True, "tenant": slug, "plan": plan,
+            "overrides": (t.get("billing", {}) or {}).get("overrides", {})}
+
+
 @router.post("/api/admin/tenants")
 async def create_tenant(
     request: Request,
