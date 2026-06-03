@@ -99,6 +99,10 @@ async def patch_mapping(sid: str, row_id: str, patch: MappingPatch,
     for field, val in patch.model_dump(exclude_none=True).items():
         row[field] = val
     row["modified"] = True
+    # When the user sets the relation by hand, lock it so a later recompute /
+    # re-run keeps their choice instead of overwriting it.
+    if patch.mapping_relation is not None:
+        row["relation_locked"] = True
 
     if row.get("tgt_column") and row.get("status") == "unmapped":
         row["status"] = "review"

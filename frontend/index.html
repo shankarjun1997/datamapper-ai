@@ -5973,7 +5973,7 @@ function renderTable() {
     const mappingTypes = ['Direct','Derived','Lookup','Constant','Expression','Unused']
       .map(t => `<option ${t===m.mapping_type?'selected':''}>${t}</option>`).join('');
 
-    const relations = ['1:1','1:M','M:1']
+    const relations = ['1:1','1:M','M:1','M:M']
       .map(r => `<option ${r===(m.mapping_relation||'1:1')?'selected':''}>${r}</option>`).join('');
 
     // Flag rows with missing target despite being mapped/review (data integrity issue)
@@ -5996,7 +5996,7 @@ function renderTable() {
     // ── Detail expand row ──
     const mtypeOpts = ['Direct','Derived','Lookup','Constant','Expression','Unused']
       .map(t => `<option value="${t}"${t===m.mapping_type?' selected':''}>${t}</option>`).join('');
-    const relOpts = ['1:1','1:M','M:1']
+    const relOpts = ['1:1','1:M','M:1','M:M']
       .map(r => `<option value="${r}"${r===(m.mapping_relation||'1:1')?' selected':''}>${r}</option>`).join('');
 
     // PII override dropdown options for the expand panel

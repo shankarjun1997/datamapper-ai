@@ -300,29 +300,42 @@ def conf_tier(score: float) -> str:
 
 
 def _recompute_relation_types(mappings: List[Dict]) -> None:
-    """Deterministically set mapping_relation on every row based on actual fan-out counts."""
-    src_to_tgts: Dict[str, set] = {}
-    tgt_to_srcs: Dict[str, set] = {}
+    """Set mapping_relation on every row from its real fan-out.
 
+    The relation is scoped to the *source-table → target-table pair* so the same
+    column name in two different target tables (e.g. ``customer_id`` in both
+    ``cust_master`` and ``fact_support``) is correctly two 1:1 mappings, not a
+    spurious 1:M. Within a pair, the **source field's fan-out wins**: a field
+    split across several target columns is 1:M even when one of those columns
+    also receives another source — that keeps a derived name split reading as
+    1:M instead of collapsing to M:M. A field that is one of several feeding a
+    single target column is M:1; otherwise 1:1.
+
+    Rows the user has explicitly set (``relation_locked``) are left untouched so
+    manual refinements survive a re-run.
+    """
+    # Counts scoped to (src_table, tgt_table) pairs.
+    src_fanout: Dict[tuple, set] = {}   # (src_table, tgt_table, src_field) -> {tgt_col}
+    tgt_fanin: Dict[tuple, set] = {}    # (src_table, tgt_table, tgt_col)  -> {src_field}
     for m in mappings:
         if m.get("status") == "unmapped" or not m.get("tgt_column"):
             continue
-        sf  = m["src_field"]
-        tgt = f"{m.get('tgt_table', '')}.{m.get('tgt_column', '')}"
-        src_to_tgts.setdefault(sf, set()).add(tgt)
-        tgt_to_srcs.setdefault(tgt, set()).add(sf)
+        st, tt = m.get("src_table", ""), m.get("tgt_table", "")
+        sf, tc = m.get("src_field", ""), m.get("tgt_column", "")
+        src_fanout.setdefault((st, tt, sf), set()).add(tc)
+        tgt_fanin.setdefault((st, tt, tc), set()).add(sf)
 
     for m in mappings:
+        if m.get("relation_locked"):
+            continue
         if m.get("status") == "unmapped" or not m.get("tgt_column"):
             m["mapping_relation"] = "1:1"
             continue
-        sf     = m["src_field"]
-        tgt    = f"{m.get('tgt_table', '')}.{m.get('tgt_column', '')}"
-        n_tgts = len(src_to_tgts.get(sf, set()))
-        n_srcs = len(tgt_to_srcs.get(tgt, set()))
-        if n_tgts > 1 and n_srcs > 1:
-            m["mapping_relation"] = "M:M"
-        elif n_tgts > 1:
+        st, tt = m.get("src_table", ""), m.get("tgt_table", "")
+        sf, tc = m.get("src_field", ""), m.get("tgt_column", "")
+        n_tgts = len(src_fanout.get((st, tt, sf), set()))
+        n_srcs = len(tgt_fanin.get((st, tt, tc), set()))
+        if n_tgts > 1:
             m["mapping_relation"] = "1:M"
         elif n_srcs > 1:
             m["mapping_relation"] = "M:1"
