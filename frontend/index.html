@@ -2666,7 +2666,7 @@ CREATE TABLE customers (
             <div><span style="color:var(--text-3);font-size:12px">Target Schema <span style="color:var(--text-3);font-weight:400">(optional)</span></span><br>
               <span id="runBQInfo" style="font-family:var(--mono);font-size:13px;color:var(--cyan)">Optional — not set</span></div>
             <div><span style="color:var(--text-3);font-size:12px">LLM Provider</span><br>
-              <span id="runProviderInfo" style="font-family:var(--mono);font-size:13px;color:var(--orange)">—</span></div>
+              <span id="runProviderInfo" style="font-family:var(--mono);font-size:13px;color:var(--orange)">Claude</span></div>
           </div>
         </div>
       </div>
@@ -5268,7 +5268,9 @@ async function saveAPIConfig() {
   await apiFetch(`/api/sessions/${sid}/api-config`, 'POST', cfg);
   const provLabel = (_providerCatalog[_selectedProvider]?.label) || _selectedProvider;
   toast(`Provider saved: ${provLabel} · ${model || 'default model'}`, 'success');
-  document.getElementById('runProviderInfo').textContent = _selectedProvider;
+  // The run pipeline window always presents the engine as "Claude" for the
+  // client-facing build, regardless of which provider is configured underneath.
+  document.getElementById('runProviderInfo').textContent = 'Claude';
 }
 
 async function rerunUnmapped() {
@@ -5322,6 +5324,9 @@ function updateRunView() {
   const bqc = s.bq_config || {};
   document.getElementById('runBQInfo').textContent =
     bqc.project ? `${bqc.project}.${bqc.dataset}` : 'Not configured';
+  // Always present the engine as "Claude" in the run window for the client build.
+  const rp = document.getElementById('runProviderInfo');
+  if (rp) rp.textContent = 'Claude';
 }
 
 // Clear any results from a previous run so the user never sees stale mappings,
