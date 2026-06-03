@@ -1996,7 +1996,7 @@ select.cell-edit{
               <div class="step-icon">1</div>
               <div class="step-body">
                 <div class="step-title">L1 · Schema Parse</div>
-                <div class="step-desc">Parse source schema from file, DB, DDL, or data platform</div>
+                <div class="step-desc">Parse &amp; profile source schema from file, DB, DDL, or data platform; ingest into the metadata repository</div>
                 <div class="step-meta" id="step-L1-meta">Waiting…</div>
               </div>
             </div>
@@ -2004,7 +2004,7 @@ select.cell-edit{
               <div class="step-icon">2</div>
               <div class="step-body">
                 <div class="step-title" id="step-L2-title">L2 · Target Schema</div>
-                <div class="step-desc" id="step-L2-desc">Load target schema from custom files or BigQuery</div>
+                <div class="step-desc" id="step-L2-desc">Load target schema (optional) and auto-match source ↔ target table pairs</div>
                 <div class="step-meta" id="step-L2-meta">Waiting…</div>
               </div>
             </div>
@@ -2012,7 +2012,7 @@ select.cell-edit{
               <div class="step-icon">3</div>
               <div class="step-body">
                 <div class="step-title">L3 · Semantic Mapping</div>
-                <div class="step-desc">LLM-powered column mapping with confidence scoring</div>
+                <div class="step-desc">Deterministic + LLM column mapping — confidence scoring, relation types (1:1 / 1:M / M:1 / M:M) and derived splits</div>
                 <div class="step-meta" id="step-L3-meta">Waiting…</div>
               </div>
             </div>
@@ -2020,7 +2020,7 @@ select.cell-edit{
               <div class="step-icon">4</div>
               <div class="step-body">
                 <div class="step-title">L4 · SQL Generation</div>
-                <div class="step-desc">Materialize CREATE OR REPLACE TABLE BQ SQL</div>
+                <div class="step-desc">Materialize CREATE OR REPLACE TABLE SQL with per-column transforms &amp; relation logic</div>
                 <div class="step-meta" id="step-L4-meta">Waiting…</div>
               </div>
             </div>
@@ -2694,22 +2694,22 @@ CREATE TABLE customers (
           <div class="stepper" id="runStepper">
             <div class="step" id="rstep-L1"><div class="step-icon">1</div><div class="step-body">
               <div class="step-title">L1 · Schema Intelligence</div>
-              <div class="step-desc">Parse source columns, infer types, validate structure</div>
+              <div class="step-desc">Parse &amp; profile source columns, infer types, validate structure, ingest into metadata repo</div>
               <div class="step-meta" id="rstep-L1-meta">Ready</div>
             </div></div>
             <div class="step" id="rstep-L2"><div class="step-icon">2</div><div class="step-body">
               <div class="step-title">L2 · Target Schema <span style="color:var(--text-3);font-weight:400">(optional)</span></div>
-              <div class="step-desc">Load target schema from files or BigQuery — optional; skip to map later</div>
+              <div class="step-desc">Load target schema &amp; auto-match source ↔ target table pairs — optional; skip to map source-only</div>
               <div class="step-meta" id="rstep-L2-meta">Waiting…</div>
             </div></div>
             <div class="step" id="rstep-L3"><div class="step-icon">3</div><div class="step-body">
               <div class="step-title">L3 · Semantic Mapping</div>
-              <div class="step-desc">LLM matches source → target with confidence scoring</div>
+              <div class="step-desc">Deterministic + LLM source → target mapping — confidence, relation types (1:1 / 1:M / M:1 / M:M) &amp; derived splits</div>
               <div class="step-meta" id="rstep-L3-meta">Waiting…</div>
             </div></div>
             <div class="step" id="rstep-L4"><div class="step-icon">4</div><div class="step-body">
               <div class="step-title">L4 · SQL Materialization</div>
-              <div class="step-desc">Generate CREATE OR REPLACE TABLE BQ SQL</div>
+              <div class="step-desc">Generate CREATE OR REPLACE TABLE SQL with per-column transforms &amp; relation logic</div>
               <div class="step-meta" id="rstep-L4-meta">Waiting…</div>
             </div></div>
           </div>
