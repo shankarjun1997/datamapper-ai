@@ -637,7 +637,8 @@ async def _run_sql_generation(session_id: str):
 
     try:
         session["stage"] = "L4"
-        await emit("stage", {"stage": "L4", "status": "running", "msg": "Generating materialized BigQuery SQL…"})
+        await emit("stage", {"stage": "L4", "status": "running",
+                             "msg": "Generating STM, mapping documents & materialized SQL…"})
 
         mappings = session.get("mappings", [])
         cfg      = session.get("bq_config", {})
@@ -698,11 +699,29 @@ async def _run_sql_generation(session_id: str):
         ) + "\n".join(sql_blocks)
 
         session["generated_sql"] = final_sql
+
+        # L4 also produces the human-facing migration deliverables: the
+        # consolidated Source-to-Target Mapping document and a manifest of every
+        # downloadable artifact, all derived from this same session so they stay
+        # consistent with the SQL.
+        try:
+            from app.intelligence.stm_documents import (
+                build_documents_manifest,
+                build_stm_markdown,
+            )
+            session["mapping_document"] = build_stm_markdown(session_id, session)
+            session["documents"] = build_documents_manifest(session_id, session)
+            await emit("documents", {"documents": session["documents"],
+                                     "count": len(session["documents"])})
+        except Exception as _e:
+            logger.warning("STM document generation skipped: %s", _e)
+
         session["status"] = "done"
         session["stage"]  = "done"
         _save_sessions()
 
-        await emit("stage", {"stage": "L4", "status": "done", "msg": "SQL generated successfully"})
+        await emit("stage", {"stage": "L4", "status": "done",
+                             "msg": "STM, mapping documents & SQL generated"})
         await emit("status", {"status": "done", "msg": "Pipeline complete"})
 
     except Exception as e:

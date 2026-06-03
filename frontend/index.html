@@ -2019,8 +2019,8 @@ select.cell-edit{
             <div class="step" id="step-L4">
               <div class="step-icon">4</div>
               <div class="step-body">
-                <div class="step-title">L4 · SQL Generation</div>
-                <div class="step-desc">Materialize CREATE OR REPLACE TABLE SQL with per-column transforms &amp; relation logic</div>
+                <div class="step-title">L4 · Document Generation</div>
+                <div class="step-desc">Generate the Source-to-Target Mapping (STM) &amp; mapping documents plus materialized SQL with per-column transforms &amp; relation logic</div>
                 <div class="step-meta" id="step-L4-meta">Waiting…</div>
               </div>
             </div>
@@ -2708,8 +2708,8 @@ CREATE TABLE customers (
               <div class="step-meta" id="rstep-L3-meta">Waiting…</div>
             </div></div>
             <div class="step" id="rstep-L4"><div class="step-icon">4</div><div class="step-body">
-              <div class="step-title">L4 · SQL Materialization</div>
-              <div class="step-desc">Generate CREATE OR REPLACE TABLE SQL with per-column transforms &amp; relation logic</div>
+              <div class="step-title">L4 · Document Generation</div>
+              <div class="step-desc">Generate STM &amp; mapping documents plus materialized SQL with per-column transforms &amp; relation logic</div>
               <div class="step-meta" id="rstep-L4-meta">Waiting…</div>
             </div></div>
           </div>
@@ -2989,9 +2989,10 @@ CREATE TABLE customers (
         <div class="card">
           <div class="card-body" style="text-align:center;padding:26px 18px">
             <div style="font-size:32px;margin-bottom:8px">📄</div>
-            <div style="font-size:15px;font-weight:700;margin-bottom:6px">Mapping CSV</div>
-            <div style="font-size:12px;color:var(--text-2);margin-bottom:16px">Source-to-target spec for your ETL — download column-level or table-level separately.</div>
+            <div style="font-size:15px;font-weight:700;margin-bottom:6px">Mapping Spec (STM)</div>
+            <div style="font-size:12px;color:var(--text-2);margin-bottom:16px">Source-to-target spec for your ETL — the full STM document, or column-/table-level CSV.</div>
             <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+              <button class="btn btn-cyan btn-sm" onclick="exportMappingDoc()">⬇ STM document</button>
               <button class="btn btn-ghost btn-sm" onclick="exportCSV()">⬇ Column mapping</button>
               <button class="btn btn-ghost btn-sm" onclick="exportTableMappings()">⬇ Table mapping</button>
             </div>
@@ -6227,6 +6228,12 @@ function exportTableMappings() {
   if (!currentSession) { toast('No active session','warn'); return; }
   const sid = currentSession.id || currentSession.session_id;
   window.open(`${API}/api/sessions/${sid}/export/table-mappings`,'_blank');
+}
+
+function exportMappingDoc() {
+  if (!currentSession) { toast('No active session','warn'); return; }
+  const sid = currentSession.id || currentSession.session_id;
+  window.open(`${API}/api/sessions/${sid}/export/mapping-doc`,'_blank');
 }
 
 function exportSQL() {

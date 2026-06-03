@@ -459,3 +459,32 @@ async def export_table_mappings_csv(sid: str):
 async def get_sql(sid: str):
     s = _session_or_404(sid)
     return {"sql": s.get("generated_sql", ""), "ready": bool(s.get("generated_sql"))}
+
+
+@router.get("/api/sessions/{sid}/export/mapping-doc")
+async def export_mapping_doc(sid: str, request: Request):
+    """Download the consolidated Source-to-Target Mapping document (Markdown).
+
+    Rebuilt fresh from the session so it reflects the latest edits, falling back
+    to the copy L4 stored on the session if rebuilding isn't possible."""
+    s = _session_or_404(sid)
+    from app.intelligence.stm_documents import build_stm_markdown
+    try:
+        md = build_stm_markdown(sid, s)
+    except Exception:
+        md = s.get("mapping_document") or "# Source-to-Target Mapping\n\n_No mappings yet._\n"
+    _write_audit_event("export.mapping_doc", tenant=s.get("tenant"), session_id=sid,
+                       ip=_get_client_ip(request), metadata={"rows": len(s.get("mappings", []))})
+    return StreamingResponse(
+        io.BytesIO(md.encode("utf-8")),
+        media_type="text/markdown",
+        headers={"Content-Disposition": f'attachment; filename="stm_{sid[:8]}.md"'},
+    )
+
+
+@router.get("/api/sessions/{sid}/documents")
+async def list_documents(sid: str):
+    """Manifest of every L4 deliverable (STM doc, CSV/XLSX, SQL) with endpoints."""
+    s = _session_or_404(sid)
+    from app.intelligence.stm_documents import build_documents_manifest
+    return {"documents": build_documents_manifest(sid, s)}
