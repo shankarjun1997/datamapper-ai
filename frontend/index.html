@@ -5302,9 +5302,27 @@ function updateRunView() {
     bqc.project ? `${bqc.project}.${bqc.dataset}` : 'Not configured';
 }
 
+// Clear any results from a previous run so the user never sees stale mappings,
+// SQL or documents while a new run is in progress.
+function clearPipelineResults() {
+  if (currentSession) { currentSession.mappings = []; currentSession.generated_sql = ''; }
+  try { allMappings = []; } catch (e) {}
+  const body = document.getElementById('mappingBody');
+  if (body) body.innerHTML = '';
+  ['total','mapped','review','unmapped'].forEach(k => {
+    ['kpi-','mtbl-'].forEach(pfx => { const el = document.getElementById(pfx+k); if (el) el.textContent = '—'; });
+  });
+  const rb = document.getElementById('reviewBadge'); if (rb) rb.style.display = 'none';
+  const sqlPre = document.querySelector('#sqlPreview pre'); if (sqlPre) sqlPre.innerHTML = '';
+  const sumBox = document.getElementById('summaryDisplay'); if (sumBox) { sumBox.style.display = 'none'; sumBox.innerHTML = ''; }
+}
+
 async function startPipeline() {
   if (!currentSession) { toast('Create and configure a session first','warn'); return; }
   const sid = currentSession.id || currentSession.session_id;
+
+  // Drop stale results from any previous run before this one starts.
+  clearPipelineResults();
 
   // Update L2 label based on target mode
   const l2title = document.getElementById('step-L2-title');
@@ -5372,7 +5390,12 @@ function startSSE(sid) {
 }
 
 function handleSSE(event, data) {
-  if (event === 'stage') {
+  if (event === 'reset') {
+    // Backend dropped previous results for a fresh run — mirror that in the UI.
+    clearPipelineResults();
+    if (data && data.msg) log(data.msg, '');
+  }
+  else if (event === 'stage') {
     const stage = data.stage;
     const status = data.status;
     log(`[${stage}] ${data.msg}`, status === 'done' ? 'done' : status === 'running' ? 'active' : '');

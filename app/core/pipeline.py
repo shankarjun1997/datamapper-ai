@@ -251,6 +251,14 @@ async def _run_pipeline(session_id: str):
         await _emit(session_id, event, data)
         session.setdefault("log", []).append({"ts": _now(), "event": event, "data": data})
 
+    # Fresh run — drop any results from a previous run so stale mappings, SQL and
+    # documents are never shown while this run is in progress. Configuration
+    # (schema_data, target settings, user-defined table_mappings) is preserved.
+    for _k in ("mappings", "stats", "generated_sql", "mapping_document", "documents"):
+        session.pop(_k, None)
+    session["log"] = []
+    await emit("reset", {"msg": "Cleared previous results — starting a fresh run"})
+
     try:
         # L1: Parse uploaded schema
         session["stage"] = "L1"
