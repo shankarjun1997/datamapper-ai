@@ -4400,7 +4400,16 @@ async function suggestTableMappings() {
       _renderTmSrc(); _renderTmTgt(); _renderTmConn();
       toast(`AI suggested ${r.suggestions.length} pair(s), added ${added} new`, 'success');
     } else {
-      toast('AI found no confident suggestions — try adding custom context or map manually', 'warn');
+      // Genuinely empty (the call succeeded). Open the context panel so the
+      // user can add guidance and retry without hunting for the toggle.
+      const panel = document.getElementById('tmPromptPanel');
+      const ta    = document.getElementById('tmAiPrompt');
+      if (panel) panel.style.display = 'block';
+      const hasCtx = ta && ta.value.trim();
+      if (ta) ta.focus();
+      toast(hasCtx
+        ? 'AI still found no confident pairs with that context — refine it and Auto-Suggest again, or map manually'
+        : 'AI found no confident suggestions — add context below, then Auto-Suggest again', 'warn');
     }
   } catch(e) {
     toast(e.message || 'Suggestion failed', 'error');

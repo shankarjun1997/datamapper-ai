@@ -162,6 +162,32 @@ async def save_table_mappings(sid: str, body: dict = Body(...)):
     return {"ok": True, "saved": len(cleaned)}
 
 
+_VALID_RELATIONS = {"1:1", "1:M", "M:1", "M:M"}
+
+
+def _normalize_pair(sg: dict):
+    """Normalize an LLM-returned pair, tolerating alternate key names.
+
+    Models often answer with `source`/`target` or `source_table`/`target_table`
+    instead of `src_table`/`tgt_table`; dropping those silently is a common
+    reason 'AI found no suggestions' even when the model actually responded."""
+    if not isinstance(sg, dict):
+        return None
+    src = sg.get("src_table") or sg.get("source_table") or sg.get("source") or sg.get("src")
+    tgt = sg.get("tgt_table") or sg.get("target_table") or sg.get("target") or sg.get("tgt")
+    if not src or not tgt:
+        return None
+    relation = (sg.get("relation") or sg.get("relation_type") or sg.get("cardinality") or "1:1").strip()
+    if relation not in _VALID_RELATIONS:
+        relation = "1:1"
+    return {
+        "src_table": str(src).strip(),
+        "tgt_table": str(tgt).strip(),
+        "relation": relation,
+        "reason": (sg.get("reason") or sg.get("rationale") or sg.get("note") or "").strip(),
+    }
+
+
 @router.post("/api/sessions/{sid}/suggest-table-mappings")
 async def suggest_table_mappings(sid: str, body: dict = Body(...)):
     s = _session_or_404(sid)
@@ -176,6 +202,14 @@ async def suggest_table_mappings(sid: str, body: dict = Body(...)):
         llm = _make_llm(s)
     except Exception as e:
         raise HTTPException(503, f"LLM not configured: {e}")
+    if llm is None:
+        # Browser-LLM mode has no server-side model to call for suggestions.
+        raise HTTPException(
+            409,
+            "AI table suggestions need a server-side LLM provider, but this session is in "
+            "Browser-LLM mode. Switch to a server provider in Settings → Session API Config, "
+            "or add the table pairs manually.",
+        )
 
     src_desc = "\n".join(
         f"  {t['name']}: [{', '.join(str(c) for c in t.get('columns', [])[:10])}"
@@ -215,21 +249,22 @@ async def suggest_table_mappings(sid: str, body: dict = Body(...)):
         result = await asyncio.to_thread(llm.complete_json, system, prompt)
         _add_usage(s, llm.last_usage, llm.provider, llm.model, "table_suggest")
         _save_sessions()
-        if isinstance(result, dict):
-            suggestions = result.get("mappings", result.get("suggestions", []))
-            if not suggestions and result.get("src_table"):
-                suggestions = [result]
-        else:
-            suggestions = result if isinstance(result, list) else []
-        suggestions = [
-            sg for sg in suggestions
-            if isinstance(sg, dict) and sg.get("src_table") and sg.get("tgt_table")
-        ]
     except Exception as e:
+        # Surface the real reason (bad key, JSON parse, network) instead of
+        # masking it as "no confident suggestions" — otherwise the user keeps
+        # adding context to a call that is actually erroring out.
         from app.config import logger
         logger.warning("Table mapping suggestion LLM call failed: %s", e)
-        suggestions = []
+        raise HTTPException(502, f"AI suggestion call failed: {e}")
 
+    if isinstance(result, dict):
+        raw_list = result.get("mappings", result.get("suggestions", []))
+        if not raw_list and (result.get("src_table") or result.get("source_table")):
+            raw_list = [result]
+    else:
+        raw_list = result if isinstance(result, list) else []
+
+    suggestions = [p for p in (_normalize_pair(sg) for sg in raw_list) if p]
     return {"suggestions": suggestions}
 
 
