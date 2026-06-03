@@ -461,47 +461,90 @@ def rank_column_matches(src_cols: List[Dict], tgt_cols: List[Dict], top_k: int =
 # Derived-split rules (one source → many targets, 1:M) — e.g. full name splits
 # deterministically into first_name + last_name at 100% confidence.
 # ─────────────────────────────────────────────────────────────────────────────
-_FULLNAME_TOKENS = {"customer", "client", "contact", "person", "full", "subscriber"}
+# Declarative split-rule config — ADD NEW PATTERNS HERE, no code changes needed.
+# A rule maps a 'whole' source column (the parent) onto its component target
+# columns as a 1:M Derived mapping with a transform.
+_SPLIT_RULES = [
+    {
+        "id": "full_name",
+        "confidence": 1.0,
+        "rationale": "Derived split of full name into name parts.",
+        "source": {"anchor": "name", "qualifiers": {"customer", "client", "contact", "person", "subscriber"}},
+        "parts": [
+            {"key": "first", "tokens": {"first", "given", "forename"}, "sql": "SPLIT({src}, ' ')[OFFSET(0)]"},
+            {"key": "last",  "tokens": {"last", "surname", "family"},   "sql": "SPLIT({src}, ' ')[SAFE_OFFSET(1)]"},
+        ],
+    },
+    {
+        "id": "address",
+        "confidence": 0.9,  # parsing is heuristic — verify against real data
+        "rationale": "Derived split of address into components — verify the parsing logic.",
+        "source": {"anchor": "address",
+                   "qualifiers": {"mailing", "billing", "shipping", "home", "work", "primary", "customer"}},
+        "parts": [
+            {"key": "street", "tokens": {"street", "road", "line"}, "sql": "SPLIT({src}, ',')[SAFE_OFFSET(0)]"},
+            {"key": "city",   "tokens": {"city", "town"},           "sql": "TRIM(SPLIT({src}, ',')[SAFE_OFFSET(1)])"},
+            {"key": "state",  "tokens": {"state", "province"},      "sql": "TRIM(SPLIT({src}, ',')[SAFE_OFFSET(2)])"},
+            {"key": "postal", "tokens": {"postal"},                 "sql": "TRIM(SPLIT({src}, ',')[SAFE_OFFSET(3)])"},
+        ],
+    },
+]
+
+# Tokens that mean a column is already a *part* (or otherwise not a split parent).
+_SPLIT_DISQUALIFY = {"id", "code", "key", "type", "status", "number",
+                     "first", "last", "given", "surname", "family",
+                     "line", "city", "state", "province", "postal", "street", "road", "town", "country"}
+_GENERIC_SOURCE_TOKENS = {"full"}
 
 
-def _is_full_name(field: str) -> bool:
-    """True if a source field looks like a person's full name (the split parent)."""
+def _source_matches_rule(field: str, rule: dict) -> bool:
     toks = _norm_tokens(field)
-    if "name" not in toks:
+    src = rule["source"]
+    if src["anchor"] not in toks:
         return False
-    return bool(toks & _FULLNAME_TOKENS) or toks == {"name"} or toks <= {"full", "name"}
+    if toks & _SPLIT_DISQUALIFY:                       # already a component, skip
+        return False
+    if toks & src.get("qualifiers", set()):
+        return True
+    return toks <= ({src["anchor"]} | _GENERIC_SOURCE_TOKENS)
 
 
-def _name_part(field: str):
-    """Classify a target column as a 'first' or 'last' name part (else None)."""
+def _target_part_key(field: str, rule: dict):
     toks = _norm_tokens(field)
-    if "first" in toks or "given" in toks or "forename" in toks:
-        return "first"
-    if "last" in toks or "surname" in toks or "family" in toks:
-        return "last"
+    for part in rule["parts"]:
+        if toks & part["tokens"]:
+            return part["key"]
     return None
 
 
-_SPLIT_SQL = {
-    "first": "SPLIT({src}, ' ')[OFFSET(0)]",
-    "last":  "SPLIT({src}, ' ')[SAFE_OFFSET(1)]",
-}
+# Backward-compatible name-specific helpers (used elsewhere / in tests).
+_NAME_RULE = _SPLIT_RULES[0]
+
+
+def _is_full_name(field: str) -> bool:
+    return _source_matches_rule(field, _NAME_RULE)
+
+
+def _name_part(field: str):
+    return _target_part_key(field, _NAME_RULE)
 
 
 def apply_split_rules(mappings: List[Dict], src_tables: List[Dict], tgt_tables: List[Dict]) -> List[Dict]:
-    """Ensure known derived splits exist: a source full-name column maps to the
-    target first_name AND last_name columns at 100% confidence as a 1:M Derived
-    mapping (with a SPLIT() transform). Upgrades any existing weak row in place
-    and appends missing parts. Idempotent."""
-    tgt_parts: Dict[str, Dict[str, str]] = {}
+    """Apply declarative derived-split rules (full name, address, …): a source
+    'whole' column maps to its target component columns at the rule's confidence
+    as a 1:M Derived mapping with a transform. Upgrades weak rows in place;
+    appends missing parts. Idempotent."""
+    # Per-rule target index: {rule_id: {table: {part_key: tgt_col}}}.
+    rule_idx: Dict[str, Dict[str, Dict[str, str]]] = {r["id"]: {} for r in _SPLIT_RULES}
+    part_sql = {(r["id"], p["key"]): p["sql"] for r in _SPLIT_RULES for p in r["parts"]}
     for t in tgt_tables or []:
         tname = t.get("name") or t.get("table") or ""
         for c in t.get("columns", []) or []:
-            part = _name_part(c.get("name", ""))
-            if part:
-                tgt_parts.setdefault(tname, {})[part] = c.get("name", "")
-    if not tgt_parts:
-        return mappings
+            cname = c.get("name", "")
+            for r in _SPLIT_RULES:
+                pk = _target_part_key(cname, r)
+                if pk:
+                    rule_idx[r["id"]].setdefault(tname, {})[pk] = cname
 
     src_to_tgt: Dict[str, Dict[str, int]] = {}
     for m in mappings:
@@ -509,11 +552,11 @@ def apply_split_rules(mappings: List[Dict], src_tables: List[Dict], tgt_tables: 
             d = src_to_tgt.setdefault(m.get("src_table", ""), {})
             d[m["tgt_table"]] = d.get(m["tgt_table"], 0) + 1
 
-    def primary_tgt(src_table: str):
+    def primary_tgt(src_table: str, tables: Dict):
         for tt in sorted(src_to_tgt.get(src_table, {}), key=lambda x: -src_to_tgt[src_table][x]):
-            if tt in tgt_parts:
+            if tt in tables:
                 return tt
-        return next(iter(tgt_parts), None)
+        return next(iter(tables), None)
 
     existing = {(m.get("src_table"), m.get("src_field"), m.get("tgt_table"), m.get("tgt_column")): m
                 for m in mappings}
@@ -522,23 +565,27 @@ def apply_split_rules(mappings: List[Dict], src_tables: List[Dict], tgt_tables: 
         stable = st.get("name") or st.get("table") or ""
         for c in st.get("columns", []) or []:
             sfield = c.get("name", "")
-            if not _is_full_name(sfield):
+            rule = next((r for r in _SPLIT_RULES if _source_matches_rule(sfield, r)), None)
+            if not rule:
                 continue
-            ttable = primary_tgt(stable)
-            if not ttable or ttable not in tgt_parts:
+            tables = rule_idx[rule["id"]]
+            ttable = primary_tgt(stable, tables) if tables else None
+            if not ttable or ttable not in tables:
                 continue
-            for part, tcol in tgt_parts[ttable].items():
-                sql = _SPLIT_SQL[part].format(src=sfield)
+            conf = rule.get("confidence", 1.0)
+            tier = "high" if conf >= 0.8 else ("medium" if conf >= 0.5 else "low")
+            for pkey, tcol in tables[ttable].items():
+                sql = part_sql[(rule["id"], pkey)].format(src=sfield)
                 key = (stable, sfield, ttable, tcol)
                 if key in existing:
-                    existing[key].update({"confidence": 1.0, "tier": "high", "mapping_type": "Derived",
+                    existing[key].update({"confidence": conf, "tier": tier, "mapping_type": "Derived",
                                           "mapping_relation": "1:M", "business_logic": sql, "status": "mapped"})
                 else:
                     mappings.append({
                         "id": uuid.uuid4().hex[:8], "src_table": stable, "src_field": sfield,
                         "src_type": c.get("type", "STRING"), "tgt_table": ttable, "tgt_column": tcol,
                         "tgt_type": "STRING", "mapping_type": "Derived", "mapping_relation": "1:M",
-                        "business_logic": sql, "confidence": 1.0, "tier": "high", "status": "mapped",
-                        "rationale": "Derived split of full name into name parts.", "modified": False,
+                        "business_logic": sql, "confidence": conf, "tier": tier, "status": "mapped",
+                        "rationale": rule["rationale"], "modified": False,
                     })
     return mappings

@@ -66,3 +66,41 @@ def test_idempotent():
     n = len(mappings)
     apply_split_rules(mappings, SRC, TGT)  # second pass shouldn't duplicate
     assert len(mappings) == n
+
+
+# ── Address split (declarative second rule) ──────────────────────────────────
+ADDR_SRC = [{"name": "accounts", "columns": [
+    {"name": "full_address", "type": "STRING"}, {"name": "account_id", "type": "INT64"}]}]
+ADDR_TGT = [{"name": "location", "columns": [
+    {"name": "street", "type": "STRING"}, {"name": "city", "type": "STRING"},
+    {"name": "state", "type": "STRING"}, {"name": "postal_code", "type": "STRING"}]}]
+
+
+def test_address_splits_into_components():
+    mappings = []
+    apply_split_rules(mappings, ADDR_SRC, ADDR_TGT)
+    splits = [m for m in mappings if m["src_field"] == "full_address"]
+    assert {m["tgt_column"] for m in splits} == {"street", "city", "state", "postal_code"}
+    for m in splits:
+        assert m["mapping_type"] == "Derived"
+        assert m["confidence"] == 0.9
+        assert "SPLIT(" in m["business_logic"]
+
+
+def test_address_is_1_to_m_after_recompute():
+    mappings = []
+    apply_split_rules(mappings, ADDR_SRC, ADDR_TGT)
+    _recompute_relation_types(mappings)
+    splits = [m for m in mappings if m["src_field"] == "full_address"]
+    assert len(splits) == 4
+    assert all(m["mapping_relation"] == "1:M" for m in splits)
+
+
+def test_address_id_is_not_a_split_parent():
+    # 'address_id' / 'account_id' must not be treated as a splittable address.
+    from app.intelligence.confidence import _source_matches_rule, _SPLIT_RULES
+    addr_rule = next(r for r in _SPLIT_RULES if r["id"] == "address")
+    assert _source_matches_rule("full_address", addr_rule) is True
+    assert _source_matches_rule("billing_address", addr_rule) is True
+    assert _source_matches_rule("address_id", addr_rule) is False
+    assert _source_matches_rule("state", addr_rule) is False
