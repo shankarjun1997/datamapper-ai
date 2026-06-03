@@ -4,6 +4,7 @@ app/intelligence/confidence.py — deterministic confidence scoring
 from __future__ import annotations
 
 import re
+import uuid
 from typing import Dict, List
 
 _VENDOR_PREFIXES = re.compile(
@@ -454,3 +455,90 @@ def rank_column_matches(src_cols: List[Dict], tgt_cols: List[Dict], top_k: int =
             for n, c, ns in scored[:top_k]
         ]
     return results
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Derived-split rules (one source → many targets, 1:M) — e.g. full name splits
+# deterministically into first_name + last_name at 100% confidence.
+# ─────────────────────────────────────────────────────────────────────────────
+_FULLNAME_TOKENS = {"customer", "client", "contact", "person", "full", "subscriber"}
+
+
+def _is_full_name(field: str) -> bool:
+    """True if a source field looks like a person's full name (the split parent)."""
+    toks = _norm_tokens(field)
+    if "name" not in toks:
+        return False
+    return bool(toks & _FULLNAME_TOKENS) or toks == {"name"} or toks <= {"full", "name"}
+
+
+def _name_part(field: str):
+    """Classify a target column as a 'first' or 'last' name part (else None)."""
+    toks = _norm_tokens(field)
+    if "first" in toks or "given" in toks or "forename" in toks:
+        return "first"
+    if "last" in toks or "surname" in toks or "family" in toks:
+        return "last"
+    return None
+
+
+_SPLIT_SQL = {
+    "first": "SPLIT({src}, ' ')[OFFSET(0)]",
+    "last":  "SPLIT({src}, ' ')[SAFE_OFFSET(1)]",
+}
+
+
+def apply_split_rules(mappings: List[Dict], src_tables: List[Dict], tgt_tables: List[Dict]) -> List[Dict]:
+    """Ensure known derived splits exist: a source full-name column maps to the
+    target first_name AND last_name columns at 100% confidence as a 1:M Derived
+    mapping (with a SPLIT() transform). Upgrades any existing weak row in place
+    and appends missing parts. Idempotent."""
+    tgt_parts: Dict[str, Dict[str, str]] = {}
+    for t in tgt_tables or []:
+        tname = t.get("name") or t.get("table") or ""
+        for c in t.get("columns", []) or []:
+            part = _name_part(c.get("name", ""))
+            if part:
+                tgt_parts.setdefault(tname, {})[part] = c.get("name", "")
+    if not tgt_parts:
+        return mappings
+
+    src_to_tgt: Dict[str, Dict[str, int]] = {}
+    for m in mappings:
+        if m.get("tgt_table"):
+            d = src_to_tgt.setdefault(m.get("src_table", ""), {})
+            d[m["tgt_table"]] = d.get(m["tgt_table"], 0) + 1
+
+    def primary_tgt(src_table: str):
+        for tt in sorted(src_to_tgt.get(src_table, {}), key=lambda x: -src_to_tgt[src_table][x]):
+            if tt in tgt_parts:
+                return tt
+        return next(iter(tgt_parts), None)
+
+    existing = {(m.get("src_table"), m.get("src_field"), m.get("tgt_table"), m.get("tgt_column")): m
+                for m in mappings}
+
+    for st in src_tables or []:
+        stable = st.get("name") or st.get("table") or ""
+        for c in st.get("columns", []) or []:
+            sfield = c.get("name", "")
+            if not _is_full_name(sfield):
+                continue
+            ttable = primary_tgt(stable)
+            if not ttable or ttable not in tgt_parts:
+                continue
+            for part, tcol in tgt_parts[ttable].items():
+                sql = _SPLIT_SQL[part].format(src=sfield)
+                key = (stable, sfield, ttable, tcol)
+                if key in existing:
+                    existing[key].update({"confidence": 1.0, "tier": "high", "mapping_type": "Derived",
+                                          "mapping_relation": "1:M", "business_logic": sql, "status": "mapped"})
+                else:
+                    mappings.append({
+                        "id": uuid.uuid4().hex[:8], "src_table": stable, "src_field": sfield,
+                        "src_type": c.get("type", "STRING"), "tgt_table": ttable, "tgt_column": tcol,
+                        "tgt_type": "STRING", "mapping_type": "Derived", "mapping_relation": "1:M",
+                        "business_logic": sql, "confidence": 1.0, "tier": "high", "status": "mapped",
+                        "rationale": "Derived split of full name into name parts.", "modified": False,
+                    })
+    return mappings

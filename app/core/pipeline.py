@@ -548,6 +548,14 @@ async def _run_pipeline(session_id: str):
                 m["confidence"] = 0.0
                 m["tier"]       = "none"
 
+        # Deterministic derived-split rules (e.g. full name → first_name + last_name
+        # at 100% confidence, 1:M) before relation types are recomputed.
+        try:
+            from app.intelligence.confidence import apply_split_rules
+            apply_split_rules(all_mappings, src_tables, bq_tables)
+        except Exception as _e:
+            logger.warning("split rules skipped: %s", _e)
+
         _recompute_relation_types(all_mappings)
 
         session["mappings"] = all_mappings
