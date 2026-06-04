@@ -2031,7 +2031,7 @@ select.cell-edit{
               <div class="gate-title">Gate 2 — Human Review Required</div>
               <div class="gate-desc">Review and edit the mapping table, then approve to generate SQL.</div>
             </div>
-            <button class="btn btn-green" onclick="approveGate2()">✓ Approve & Generate SQL</button>
+            <button class="btn btn-green" onclick="approveGate2()">✓ Approve &amp; Generate Mapping</button>
           </div>
           <div id="progressWrap" style="display:none">
             <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
@@ -2757,7 +2757,7 @@ CREATE TABLE customers (
               <div class="gate-title">Gate 2 — Human Review Required</div>
               <div class="gate-desc">The mapping table is ready. Review it, make edits, then approve.</div>
             </div>
-            <button class="btn btn-green" onclick="approveGate2()">✓ Approve & Generate SQL</button>
+            <button class="btn btn-green" onclick="approveGate2()">✓ Approve &amp; Generate Mapping</button>
           </div>
         </div>
       </div>
@@ -2960,7 +2960,7 @@ CREATE TABLE customers (
         <button class="btn btn-ghost btn-sm" onclick="loadMappings()">↻ Refresh</button>
         <button class="btn btn-orange btn-sm" onclick="exportCSV()">⬇ Export CSV</button>
         <button class="btn btn-green btn-sm" id="approveAllBtn" onclick="approveGate2()" style="display:none">
-          ✓ Approve & Generate SQL
+          ✓ Approve &amp; Generate Mapping
         </button>
       </div>
       <div class="tbl-scroll">
@@ -5585,8 +5585,8 @@ async function approveGate2() {
   document.getElementById('approveAllBtn').style.display = 'none';
   startSSE(sid);
   const r = await apiFetch(`/api/sessions/${sid}/approve-gate2`,'POST');
-  toast('Gate 2 approved — generating SQL…','success');
-  log('Gate 2 approved. Starting SQL generation…', 'active');
+  toast('Gate 2 approved — finalizing mapping & documents…','success');
+  log('Gate 2 approved. Finalizing mapping & generating documents…', 'active');
 }
 
 // ─── SSE ────────────────────────────────────────────────
@@ -5644,10 +5644,10 @@ function handleSSE(event, data) {
       document.getElementById('runBtn').disabled  = false;
       document.getElementById('stopBtn').style.display = 'none';
       document.getElementById('runProgressWrap').style.display = 'none';
-      log('✓ Pipeline complete!', 'done');
-      toast('Pipeline complete! SQL generated.','success');
+      log('✓ Mapping complete!', 'done');
+      toast('Mapping complete — STM & mapping documents ready.','success');
       loadSQL();
-      updateStep('L4','done','SQL generated');
+      updateStep('L4','done','Documents generated');
       updatePipelineBadge('done','done');
       stopEngineeringGames();
     }

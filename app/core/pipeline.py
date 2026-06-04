@@ -597,7 +597,7 @@ async def _run_pipeline(session_id: str):
 
         session["stage"] = "gate2"
         await emit("gate", {"gate": "gate2", "status": "awaiting",
-                             "msg": "Gate 2: Review and edit the mapping table, then click 'Approve & Generate SQL'"})
+                             "msg": "Gate 2: Review and edit the mapping table, then click 'Approve & Generate Mapping'"})
 
         session["status"] = "review"
         await emit("status", {"status": "review", "msg": "Ready for human review"})
@@ -646,7 +646,7 @@ async def _run_sql_generation(session_id: str):
     try:
         session["stage"] = "L4"
         await emit("stage", {"stage": "L4", "status": "running",
-                             "msg": "Generating STM, mapping documents & materialized SQL…"})
+                             "msg": "Finalizing the mapping & generating STM / mapping documents…"})
 
         mappings = session.get("mappings", [])
         cfg      = session.get("bq_config", {})
@@ -729,8 +729,8 @@ async def _run_sql_generation(session_id: str):
         _save_sessions()
 
         await emit("stage", {"stage": "L4", "status": "done",
-                             "msg": "STM, mapping documents & SQL generated"})
-        await emit("status", {"status": "done", "msg": "Pipeline complete"})
+                             "msg": "Mapping & STM documents generated"})
+        await emit("status", {"status": "done", "msg": "Mapping complete"})
 
     except Exception as e:
         logger.exception("SQL gen error: %s", e)
