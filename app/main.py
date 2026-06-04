@@ -398,20 +398,25 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
 app.add_middleware(RequestLoggingMiddleware)
 
 # ── Static frontend ───────────────────────────────────────────────────────────
+# The app is a single HTML shell that changes on every deploy. Tell the browser
+# to always revalidate it (no-cache) so users never get a stale UI — the #1 cause
+# of "I'm seeing an old version". The file is still validated cheaply via ETag.
+_NO_CACHE = {"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"}
+
 if (_STATIC / "index.html").exists():
     @app.get("/", include_in_schema=False)
     async def root():
-        return FileResponse(_STATIC / "index.html")
+        return FileResponse(_STATIC / "index.html", headers=_NO_CACHE)
 
     # Alias so login.html redirect to 'index.html' also works
     @app.get("/index.html", include_in_schema=False)
     async def root_alias():
-        return FileResponse(_STATIC / "index.html")
+        return FileResponse(_STATIC / "index.html", headers=_NO_CACHE)
 
 if (_STATIC / "login.html").exists():
     @app.get("/login", include_in_schema=False)
     async def login_page():
-        return FileResponse(_STATIC / "login.html")
+        return FileResponse(_STATIC / "login.html", headers=_NO_CACHE)
 
 # ── Include routers ───────────────────────────────────────────────────────────
 app.include_router(auth.router)
