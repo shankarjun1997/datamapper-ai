@@ -4646,7 +4646,12 @@ async function deriveSourceFromContext() {
   if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Inferring…'; }
   try {
     const r = await apiFetch(`/api/sessions/${sid}/source-from-context`, 'POST',
-      { text, source_name: name, ticket_url: tkt, append: !!currentSession.filename });
+      { text, source_name: name, ticket_url: tkt, append: !!currentSession.filename,
+        // Reuse the Jira Integration credentials (if filled) so a ticket key/URL
+        // works straight from the UI without needing JIRA_* in .env.
+        jira_url:   document.getElementById('jiraUrl')?.value.trim()   || '',
+        jira_email: document.getElementById('jiraEmail')?.value.trim() || '',
+        jira_token: document.getElementById('jiraToken')?.value.trim() || '' });
     currentSession.filename = r.source_name;
     currentSession.status   = 'schema_uploaded';
     const nb = document.getElementById('nextToBQ'); if (nb) nb.disabled = false;
