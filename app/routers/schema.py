@@ -343,6 +343,50 @@ async def suggest_target(sid: str, req: SuggestTargetRequest):
     }
 
 
+class SchemaEditRequest(BaseModel):
+    tables: list = []
+
+
+@router.post("/api/sessions/{sid}/source-schema")
+async def set_source_schema(sid: str, req: SchemaEditRequest, request: Request):
+    """Replace the session's source schema with a hand-edited table list
+    (the editable preview grid posts here after tweaking inferred fields)."""
+    s = _session_or_404(sid)
+    from app.intelligence.source_infer import normalize_schema
+    sd = normalize_schema({"tables": req.tables}, default_name=s.get("filename") or "source")
+    if not sd["tables"]:
+        raise HTTPException(422, "At least one table with one column is required.")
+    s["schema_data"] = sd
+    s["status"] = "schema_uploaded"
+    if not s.get("filename"):
+        s["filename"] = sd["tables"][0]["name"]
+    try:
+        from app.core.metadata_repo import ingest_schema
+        ingest_schema(s.get("tenant") or "default", system_name=s.get("filename") or sid[:8],
+                      platform="edited", schema_data=sd, updated_by="")
+    except Exception:
+        pass
+    _write_audit_event("schema.edited", tenant=s.get("tenant"), session_id=sid,
+                       ip=_get_client_ip(request), metadata={"tables": len(sd["tables"])})
+    return {"ok": True, "tables": len(sd["tables"]),
+            "columns": sum(len(t["columns"]) for t in sd["tables"]), "schema": sd["tables"]}
+
+
+@router.post("/api/sessions/{sid}/target-schema")
+async def set_target_schema(sid: str, req: SchemaEditRequest):
+    """Replace the custom-files target with a hand-edited table list."""
+    s = _session_or_404(sid)
+    from app.intelligence.source_infer import normalize_schema
+    td = normalize_schema({"tables": req.tables}, default_name="target")
+    if not td["tables"]:
+        raise HTTPException(422, "At least one target table with one column is required.")
+    s["target_files_data"] = td["tables"]
+    s["target_mode"] = "files"
+    s["bq_tables"] = td["tables"]
+    return {"ok": True, "tables": len(td["tables"]),
+            "columns": sum(len(t["columns"]) for t in td["tables"]), "target": td["tables"]}
+
+
 class SourceConnectRequest(BaseModel):
     db_type:           str
     connection_string: str

@@ -4636,7 +4636,8 @@ async function deriveSourceFromContext() {
     const nb = document.getElementById('nextToBQ'); if (nb) nb.disabled = false;
     updateSessionUI();
     if (r.schema) renderSrcTree(r.schema, r.source_name, `${r.tables} tables · AI-inferred`);
-    toast(`Source inferred: ${r.tables} table(s) · ${r.columns} columns — review & edit as needed`, 'success');
+    toast(`Source inferred: ${r.tables} table(s) · ${r.columns} columns — review & edit`, 'success');
+    openSchemaEditor('source', r.schema || []);
   } catch (e) {
     toast(e.message || 'Could not infer source', 'error');
   } finally {
@@ -4657,12 +4658,116 @@ async function generateTargetWithAI() {
     currentSession.target_mode = 'files';
     if (typeof _targetMode !== 'undefined') _targetMode = 'files';
     toast(`Target generated: ${r.tables} table(s) · ${r.columns} columns — review before mapping`, 'success');
-    // Reflect into the target schema tree if that renderer is available.
-    if (r.target && typeof renderTgtTree === 'function') renderTgtTree(r.target);
     const badge = document.getElementById('tgtFilesStatusBadge');
     if (badge) badge.textContent = `${r.tables} AI table(s)`;
+    openSchemaEditor('target', r.target || []);
   } catch (e) {
     toast(e.message || 'Could not generate target', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+  }
+}
+
+// ─── INLINE SCHEMA EDITOR (preview/edit grid) ───────────────────────────────
+const _DM_TYPES = ['STRING','INT64','NUMERIC','FLOAT64','BOOL','DATE','TIMESTAMP','TIME','JSON','BYTES'];
+let _editorKind = 'source';   // 'source' | 'target'
+let _editorTables = [];
+
+function openSchemaEditor(kind, tables) {
+  _editorKind = kind;
+  _editorTables = (tables || []).map(t => ({
+    name: t.name || t.table || 'table',
+    columns: (t.columns || []).map(c => ({
+      name: c.name || '', type: (c.type || 'STRING'), nullable: c.nullable !== false,
+    })),
+  }));
+  if (!_editorTables.length) _editorTables = [{ name: kind === 'target' ? 'target_table' : 'source_table', columns: [] }];
+  document.getElementById('schemaEditorTitle').textContent =
+    kind === 'target' ? 'Review & edit target schema' : 'Review & edit source schema';
+  renderSchemaEditor();
+  document.getElementById('schemaEditorModal').style.display = 'flex';
+}
+function closeSchemaEditor(){ document.getElementById('schemaEditorModal').style.display = 'none'; }
+
+function _editorSyncFromDOM() {
+  const cards = [...document.querySelectorAll('#schemaEditorBody [data-ti]')];
+  cards.forEach(card => {
+    const ti = +card.getAttribute('data-ti');
+    const t = _editorTables[ti]; if (!t) return;
+    const nameEl = card.querySelector('.ed-tname'); if (nameEl) t.name = nameEl.value;
+    [...card.querySelectorAll('[data-ci]')].forEach(row => {
+      const ci = +row.getAttribute('data-ci');
+      const col = t.columns[ci]; if (!col) return;
+      col.name = row.querySelector('.ed-cname')?.value ?? col.name;
+      col.type = row.querySelector('.ed-ctype')?.value ?? col.type;
+      col.nullable = !!row.querySelector('.ed-cnull')?.checked;
+    });
+  });
+}
+function renderSchemaEditor() {
+  const body = document.getElementById('schemaEditorBody');
+  const nCols = _editorTables.reduce((s,t)=>s+t.columns.length,0);
+  document.getElementById('schemaEditorCount').textContent = `${_editorTables.length} table(s) · ${nCols} columns`;
+  body.innerHTML = _editorTables.map((t, ti) => `
+    <div data-ti="${ti}" style="border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:12px;background:#0b1226">
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+        <input class="ed-tname field-input" value="${escHtml(t.name)}" style="font-size:13px;font-weight:700;max-width:280px">
+        <span style="font-size:11px;color:var(--text-3)">${t.columns.length} cols</span>
+        <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="editorAddCol(${ti})">+ Column</button>
+        <button class="btn btn-ghost btn-sm" onclick="editorRemoveTable(${ti})" title="Remove table">🗑</button>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="color:var(--text-3);text-align:left">
+          <th style="padding:4px 6px;width:46%">Column</th><th style="padding:4px 6px;width:34%">Type</th>
+          <th style="padding:4px 6px">Null?</th><th></th></tr></thead>
+        <tbody>
+        ${t.columns.map((c, ci) => `
+          <tr data-ci="${ci}">
+            <td style="padding:3px 6px"><input class="ed-cname field-input" value="${escHtml(c.name)}" style="font-size:12px;width:100%"></td>
+            <td style="padding:3px 6px"><select class="ed-ctype field-input" style="font-size:12px;width:100%">
+              ${_DM_TYPES.map(tp=>`<option ${tp===(c.type||'STRING')?'selected':''}>${tp}</option>`).join('')}
+            </select></td>
+            <td style="padding:3px 6px;text-align:center"><input type="checkbox" class="ed-cnull" ${c.nullable!==false?'checked':''}></td>
+            <td style="padding:3px 6px;text-align:right"><button class="btn btn-ghost btn-sm" onclick="editorRemoveCol(${ti},${ci})">✕</button></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`).join('');
+}
+function editorAddTable(){ _editorSyncFromDOM(); _editorTables.push({name:'new_table',columns:[{name:'',type:'STRING',nullable:true}]}); renderSchemaEditor(); }
+function editorRemoveTable(ti){ _editorSyncFromDOM(); _editorTables.splice(ti,1); if(!_editorTables.length)_editorTables=[{name:'table',columns:[]}]; renderSchemaEditor(); }
+function editorAddCol(ti){ _editorSyncFromDOM(); _editorTables[ti].columns.push({name:'',type:'STRING',nullable:true}); renderSchemaEditor(); }
+function editorRemoveCol(ti,ci){ _editorSyncFromDOM(); _editorTables[ti].columns.splice(ci,1); renderSchemaEditor(); }
+
+async function saveSchemaEditor() {
+  _editorSyncFromDOM();
+  // Drop blank columns / empty tables before saving.
+  const tables = _editorTables
+    .map(t => ({ name:(t.name||'').trim()||'table', columns:t.columns.filter(c=>(c.name||'').trim()) }))
+    .filter(t => t.columns.length);
+  if (!tables.length) { toast('Add at least one column before saving', 'warn'); return; }
+  if (!currentSession) { toast('No active session', 'warn'); return; }
+  const sid = currentSession.id || currentSession.session_id;
+  const ep  = _editorKind === 'target' ? 'target-schema' : 'source-schema';
+  const btn = document.getElementById('schemaEditorSaveBtn');
+  const orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = 'Saving…'; }
+  try {
+    const r = await apiFetch(`/api/sessions/${sid}/${ep}`, 'POST', { tables });
+    if (_editorKind === 'source') {
+      currentSession.status = 'schema_uploaded';
+      const nb = document.getElementById('nextToBQ'); if (nb) nb.disabled = false;
+      if (r.schema && typeof renderSrcTree === 'function') renderSrcTree(r.schema, currentSession.filename || 'Source', `${r.tables} tables · edited`);
+      updateSessionUI();
+    } else {
+      currentSession.target_mode = 'files';
+      if (typeof _targetMode !== 'undefined') _targetMode = 'files';
+      const badge = document.getElementById('tgtFilesStatusBadge'); if (badge) badge.textContent = `${r.tables} table(s)`;
+    }
+    toast(`Saved: ${r.tables} table(s) · ${r.columns} columns`, 'success');
+    closeSchemaEditor();
+  } catch (e) {
+    toast(e.message || 'Save failed', 'error');
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = orig; }
   }
@@ -7550,6 +7655,28 @@ async function loadAuditTrail() {
 </script>
 
 <!-- ── Append Source Tables Modal ──────────────────────────────────────── -->
+<!-- Schema editor (inline preview/edit grid for AI-inferred source / generated target) -->
+<div id="schemaEditorModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);backdrop-filter:blur(7px);-webkit-backdrop-filter:blur(7px);z-index:9200;align-items:center;justify-content:center">
+  <div style="background:#0f1730;border:1px solid rgba(167,139,250,.3);border-radius:16px;padding:24px;width:860px;max-width:96vw;max-height:88vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,.55)">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
+      <span style="font-size:20px">✨</span>
+      <h3 id="schemaEditorTitle" style="margin:0;color:#a78bfa">Review &amp; edit schema</h3>
+      <span id="schemaEditorCount" class="badge badge-gray" style="margin-left:auto"></span>
+    </div>
+    <p style="margin:0 0 16px;font-size:12px;color:var(--text-3)">
+      Tweak table names, column names, types and nullability before mapping. Add or remove anything that's off — nothing is final until you save.
+    </p>
+    <div id="schemaEditorBody"></div>
+    <div style="display:flex;gap:8px;margin-top:14px">
+      <button class="btn btn-ghost btn-sm" onclick="editorAddTable()">+ Add table</button>
+      <div style="margin-left:auto;display:flex;gap:8px">
+        <button class="btn btn-ghost btn-sm" onclick="closeSchemaEditor()">Cancel</button>
+        <button class="btn btn-sm" id="schemaEditorSaveBtn" style="background:#a78bfa;color:#1a1530;font-weight:700" onclick="saveSchemaEditor()">✓ Save schema</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="appendSrcModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);z-index:9000;align-items:center;justify-content:center">
   <div style="background:rgba(255,255,255,.06);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:28px;width:560px;max-width:95vw;max-height:85vh;overflow-y:auto;box-shadow:0 24px 60px rgba(0,0,0,.5)">
     <h3 style="margin:0 0 6px;color:var(--cyan)">Add Source Tables</h3>
