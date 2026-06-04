@@ -2169,8 +2169,8 @@ select.cell-edit{
                   <button class="btn btn-cyan btn-sm" onclick="fetchJiraContext()">⚡ Fetch Jira Context</button>
                   <span id="jiraStatus" style="font-size:12px;color:var(--text-3)"></span>
                 </div>
-                <div id="jiraContextResult" style="display:none" class="card" style="background:var(--bg-3)">
-                  <div class="card-body" style="padding:12px;font-size:12px;color:var(--text-2)" id="jiraContextBody"></div>
+                <div id="jiraContextResult" class="card" style="display:none;background:var(--bg-3)">
+                  <div class="card-body" style="padding:12px;font-size:12px;color:var(--text-2);max-height:300px;overflow-y:auto;line-height:1.6" id="jiraContextBody"></div>
                 </div>
               </div>
             </div>
