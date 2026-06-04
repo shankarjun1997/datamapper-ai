@@ -6949,15 +6949,33 @@ async function fetchJiraContext() {
       } else { throw err; }
     }
     const ctx = r.context;
+    _jiraCtx = ctx;   // remember for "use as source context" / commenting
     const resultEl = document.getElementById('jiraContextResult');
     const bodyEl   = document.getElementById('jiraContextBody');
     resultEl.style.display = 'block';
+    const subs = ctx.subtasks || [];
     bodyEl.innerHTML = `
-      <div style="margin-bottom:8px"><span style="color:var(--text-3)">Issue:</span> <span style="color:var(--cyan);font-family:var(--mono)">${ctx.issue_key}</span></div>
-      <div style="margin-bottom:8px"><span style="color:var(--text-3)">Summary:</span> ${escHtml(ctx.summary || '')}</div>
+      <div style="margin-bottom:8px"><span style="color:var(--text-3)">Issue:</span> <span style="color:var(--cyan);font-family:var(--mono)">${escHtml(ctx.issue_key||'')}</span> — ${escHtml(ctx.title || ctx.summary || '')}</div>
       ${ctx.source_hint ? `<div style="margin-bottom:4px"><span class="badge badge-gray">Source:</span> ${escHtml(ctx.source_hint)}</div>` : ''}
       ${ctx.target_hint ? `<div style="margin-bottom:4px"><span class="badge badge-cyan">Target:</span> ${escHtml(ctx.target_hint)}</div>` : ''}
       ${ctx.business_rules && ctx.business_rules.length ? `<div style="margin-top:8px"><span style="color:var(--text-3)">Rules:</span><ul style="margin:4px 0 0 16px">${ctx.business_rules.map(r => `<li>${escHtml(r)}</li>`).join('')}</ul></div>` : ''}
+      <div style="margin-top:10px;border-top:1px solid var(--border);padding-top:8px;font-weight:600;color:var(--text-3);font-size:11px;text-transform:uppercase;letter-spacing:.04em">Choose what to use as source context</div>
+      <label style="display:flex;gap:8px;align-items:flex-start;margin-top:8px;cursor:pointer">
+        <input type="checkbox" id="jctx-summary" checked style="margin-top:3px">
+        <span><b>Summary</b><br><span style="color:var(--text-2)">${escHtml(ctx.title || ctx.summary || '(none)')}</span></span></label>
+      <label style="display:flex;gap:8px;align-items:flex-start;margin-top:8px;cursor:pointer">
+        <input type="checkbox" id="jctx-desc" ${ctx.description ? 'checked' : 'disabled'} style="margin-top:3px">
+        <span><b>Description</b><br><span style="color:var(--text-2);white-space:pre-wrap">${escHtml((ctx.description||'(none)').slice(0,1200))}${(ctx.description||'').length>1200?'…':''}</span></span></label>
+      <div style="margin-top:10px"><b style="font-size:12px">Subtasks (${subs.length})</b>
+        ${subs.length ? subs.map((st,i)=>`<label style="display:flex;gap:8px;align-items:center;margin-top:6px;cursor:pointer">
+          <input type="checkbox" class="jctx-sub" data-i="${i}" checked>
+          <span><span style="font-family:var(--mono);color:var(--cyan)">${escHtml(st.key)}</span> ${escHtml(st.summary)} <span class="badge badge-gray" style="font-size:10px">${escHtml(st.status)}</span></span></label>`).join('')
+          : '<div style="color:var(--text-3);font-size:12px;margin-top:4px">No subtasks on this ticket.</div>'}
+      </div>
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+        <button class="btn btn-sm" style="background:#a78bfa;color:#1a1530;font-weight:600" onclick="useJiraAsSourceContext()">→ Use selected as source context</button>
+        <button class="btn btn-ghost btn-sm" onclick="postJiraMappingComment()">💬 Update ticket with mapping result</button>
+      </div>
     `;
     _updateJiraHeight();
     statusEl.textContent = 'Context loaded!';
@@ -6967,6 +6985,49 @@ async function fetchJiraContext() {
     statusEl.textContent = 'Failed: ' + e;
     statusEl.style.color = 'var(--red)';
     toast('Jira fetch failed: ' + e, 'error');
+  }
+}
+
+let _jiraCtx = null;
+
+// Build a context blob from the checked parts and drop it into the
+// "Describe the source" textarea so the user can derive the source from it.
+function useJiraAsSourceContext() {
+  if (!_jiraCtx) return;
+  const parts = [];
+  if (document.getElementById('jctx-summary')?.checked && (_jiraCtx.title || _jiraCtx.summary))
+    parts.push('Summary: ' + (_jiraCtx.title || _jiraCtx.summary));
+  if (document.getElementById('jctx-desc')?.checked && _jiraCtx.description)
+    parts.push('Description:\n' + _jiraCtx.description);
+  const subs = _jiraCtx.subtasks || [];
+  const chosen = [...document.querySelectorAll('.jctx-sub')].filter(c => c.checked).map(c => subs[+c.dataset.i]);
+  if (chosen.length) parts.push('Subtasks:\n' + chosen.map(s => `- ${s.key} ${s.summary}`).join('\n'));
+  if (!parts.length) { toast('Select at least one part', 'warn'); return; }
+  const ta = document.getElementById('ctxSourceText');
+  if (ta) { ta.value = parts.join('\n\n'); ta.focus(); }
+  const tk = document.getElementById('ctxJiraTicket'); if (tk) tk.value = _jiraCtx.issue_key || '';
+  toast('Loaded into "Describe the source" — now click Derive source with AI', 'success');
+}
+
+// Post a comment back to the Jira ticket with the mapping result.
+async function postJiraMappingComment() {
+  if (!currentSession) { toast('No active session', 'warn'); return; }
+  const sid = currentSession.id || currentSession.session_id;
+  const ticket = (document.getElementById('jiraTicket')?.value || '').trim() || (_jiraCtx && _jiraCtx.issue_key) || '';
+  if (!ticket) { toast('No Jira ticket to comment on', 'warn'); return; }
+  if (!(currentSession.stats && currentSession.stats.total)) {
+    if (!confirm('No mapping results yet on this session. Post a comment anyway?')) return;
+  }
+  try {
+    const r = await apiFetch(`/api/sessions/${sid}/jira-comment`, 'POST', {
+      jira_url:   document.getElementById('jiraUrl')?.value.trim()   || '',
+      jira_email: document.getElementById('jiraEmail')?.value.trim() || '',
+      jira_token: document.getElementById('jiraToken')?.value.trim() || '',
+      ticket_url: ticket,
+    });
+    toast(`Comment posted to ${r.issue_key} ✓`, 'success');
+  } catch (e) {
+    toast('Comment failed: ' + (e.message || e), 'error');
   }
 }
 

@@ -164,17 +164,12 @@ async def fetch_jira_context(sid: str, req: JiraContextRequest):
     except httpx.RequestError as e:
         raise HTTPException(502, f"Could not reach Jira: {e}")
 
+    from app.intelligence.jira_format import adf_to_text, extract_subtasks
     fields = issue_data.get("fields", {})
     summary_text = fields.get("summary", "")
     desc = fields.get("description", {})
-    desc_text = ""
-    if isinstance(desc, dict):
-        for block in desc.get("content", []):
-            for item in block.get("content", []):
-                if item.get("type") == "text":
-                    desc_text += item.get("text", "") + " "
-    elif isinstance(desc, str):
-        desc_text = desc
+    desc_text = (adf_to_text(desc) if isinstance(desc, dict) else str(desc or "")).strip()
+    subtasks = extract_subtasks(fields)
 
     llm = _make_llm(s)
     prompt = f"""Jira Issue: {issue_key}
@@ -196,10 +191,62 @@ Return JSON: {{"summary": "...", "source_hint": "...", "target_hint": "...", "bu
     except Exception:
         ctx = {"summary": summary_text, "source_hint": "", "target_hint": "", "business_rules": []}
 
+    if not isinstance(ctx, dict):
+        ctx = {"summary": summary_text}
     ctx["issue_key"] = issue_key
     ctx["jira_url"] = f"{base_url.rstrip('/')}/browse/{issue_key}"
+    ctx["title"] = summary_text
+    ctx["description"] = desc_text
+    ctx["subtasks"] = subtasks
     s["jira_context"] = ctx
     return {"ok": True, "context": ctx}
+
+
+class JiraCommentRequest(BaseModel):
+    jira_url:   Optional[str] = ""
+    jira_email: Optional[str] = ""
+    jira_token: Optional[str] = ""
+    ticket_url: Optional[str] = ""
+    comment:    Optional[str] = ""   # if blank, an auto mapping-summary is posted
+
+
+@router.post("/api/sessions/{sid}/jira-comment")
+async def post_jira_comment(sid: str, req: JiraCommentRequest, request: Request):
+    """Post a comment back to a Jira ticket — used to report mapping completion."""
+    s = _session_or_404(sid)
+    base_url = req.jira_url or _JIRA_URL
+    email    = req.jira_email or _JIRA_EMAIL
+    token    = req.jira_token or _JIRA_TOKEN
+    ticket   = req.ticket_url or (s.get("jira_context", {}) or {}).get("issue_key", "")
+    if not base_url or not token:
+        raise HTTPException(422, "Jira base URL and API token are required.")
+    issue_key = ticket.rstrip("/").split("/")[-1] if "/" in ticket else ticket
+    if not issue_key:
+        raise HTTPException(422, "A Jira ticket URL or key is required.")
+
+    from app.intelligence.jira_format import build_mapping_comment, text_to_adf
+    body_text = (req.comment or "").strip() or build_mapping_comment(s)
+    creds = base64.b64encode(f"{email}:{token}".encode()).decode()
+    api_url = f"{base_url.rstrip('/')}/rest/api/3/issue/{issue_key}/comment"
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(api_url,
+                                     headers={"Authorization": f"Basic {creds}",
+                                              "Accept": "application/json", "Content-Type": "application/json"},
+                                     json={"body": text_to_adf(body_text)})
+        if resp.status_code in (401, 403):
+            raise HTTPException(401, "Jira rejected the comment — check the token has permission to comment on this project.")
+        if resp.status_code == 404:
+            raise HTTPException(404, f"Issue {issue_key!r} not found or not accessible to this account.")
+        resp.raise_for_status()
+        data = resp.json()
+    except httpx.RequestError as e:
+        raise HTTPException(502, f"Could not reach Jira: {e}")
+
+    _write_audit_event("jira.comment_posted", tenant=s.get("tenant"), session_id=sid,
+                       ip=_get_client_ip(request), metadata={"issue": issue_key})
+    return {"ok": True, "issue_key": issue_key, "comment_id": data.get("id", ""),
+            "url": f"{base_url.rstrip('/')}/browse/{issue_key}", "posted": body_text}
 
 
 async def _fetch_jira_text(base_url: str, email: str, token: str, ticket: str) -> tuple[str, str]:
