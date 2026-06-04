@@ -2219,6 +2219,30 @@ select.cell-edit{
             <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="handleFiles(this.files)">
           </div>
         </div>
+
+        <!-- Context-as-source (no database / no clean schema needed) -->
+        <div class="card" style="margin-bottom:20px;border:1px solid rgba(167,139,250,.25)">
+          <div class="card-header">
+            <span class="card-icon">🧠</span>
+            <span class="card-title">Or describe the source — AI infers the fields</span>
+          </div>
+          <div class="card-body">
+            <div style="font-size:12px;color:var(--text-2);margin-bottom:8px">
+              No database and no clean schema file? Paste a Jira story, a description, or any notes about
+              the data — or pull a Jira ticket — and AI will infer the source tables &amp; columns.
+            </div>
+            <textarea id="ctxSourceText" class="field-input" rows="4"
+              style="font-size:12px;width:100%;resize:vertical;min-height:80px"
+              placeholder="e.g. 'Migrate the Frontier customer extract: customer id, full name, email, phone, full address, monthly revenue, contract start/end dates, account status, SLA level, data usage in TB...'"></textarea>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;align-items:center">
+              <input id="ctxSourceName" class="field-input" placeholder="Source name (optional)" style="font-size:12px;max-width:200px">
+              <input id="ctxJiraTicket" class="field-input" placeholder="Jira ticket URL / key (optional)" style="font-size:12px;max-width:240px">
+              <button class="btn btn-sm" id="ctxDeriveBtn" style="background:#a78bfa;color:#1a1530;border:1px solid rgba(167,139,250,.5);font-weight:600;margin-left:auto" onclick="deriveSourceFromContext()">
+                ✨ Derive source with AI
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- DB Connection panel -->
@@ -2589,6 +2613,14 @@ CREATE TABLE customers (
             <p style="font-size:13px;color:var(--text-2);margin-bottom:14px">
               Upload one CSV file per target table. Each CSV must have at least a <code style="color:var(--cyan)">column_name</code> column. Optionally include <code style="color:var(--cyan)">data_type</code> and <code style="color:var(--cyan)">is_nullable</code>.
             </p>
+            <!-- Generate a target from the source with AI (no target schema on hand) -->
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:10px 12px;margin-bottom:14px;border:1px solid rgba(167,139,250,.25);border-radius:10px;background:rgba(167,139,250,.05)">
+              <span style="font-size:12px;color:var(--text-2)">No target schema yet? Let AI propose one from your source.</span>
+              <input id="genTargetHint" class="field-input" placeholder="Optional instructions (e.g. 'normalize address, split names')" style="font-size:12px;flex:1;min-width:180px">
+              <button class="btn btn-sm" id="genTargetBtn" style="background:#a78bfa;color:#1a1530;border:1px solid rgba(167,139,250,.5);font-weight:600" onclick="generateTargetWithAI()">
+                ✨ Generate target with AI
+              </button>
+            </div>
             <div class="dropzone" id="targetFilesDropzone"
                  ondragover="tgtDz_dragover(event)" ondragleave="tgtDz_dragleave(event)" ondrop="tgtDz_drop(event)"
                  onclick="document.getElementById('targetFilesInput').click()" style="margin-bottom:14px">
@@ -4584,6 +4616,57 @@ async function handleFiles(files) {
 
 // Back-compat single-file entry point.
 async function handleFileSelect(file) { return handleFiles(file ? [file] : []); }
+
+// ─── CONTEXT → SOURCE (no DB / no clean schema) ─────────────────────────────
+async function deriveSourceFromContext() {
+  if (!currentSession) await newSession();
+  const sid  = currentSession.id || currentSession.session_id;
+  const text = (document.getElementById('ctxSourceText')?.value || '').trim();
+  const name = (document.getElementById('ctxSourceName')?.value || '').trim();
+  const tkt  = (document.getElementById('ctxJiraTicket')?.value || '').trim();
+  if (!text && !tkt) { toast('Paste some context or a Jira ticket first', 'warn'); return; }
+  const btn = document.getElementById('ctxDeriveBtn');
+  const orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Inferring…'; }
+  try {
+    const r = await apiFetch(`/api/sessions/${sid}/source-from-context`, 'POST',
+      { text, source_name: name, ticket_url: tkt, append: !!currentSession.filename });
+    currentSession.filename = r.source_name;
+    currentSession.status   = 'schema_uploaded';
+    const nb = document.getElementById('nextToBQ'); if (nb) nb.disabled = false;
+    updateSessionUI();
+    if (r.schema) renderSrcTree(r.schema, r.source_name, `${r.tables} tables · AI-inferred`);
+    toast(`Source inferred: ${r.tables} table(s) · ${r.columns} columns — review & edit as needed`, 'success');
+  } catch (e) {
+    toast(e.message || 'Could not infer source', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+  }
+}
+
+// ─── GENERATE TARGET WITH AI ────────────────────────────────────────────────
+async function generateTargetWithAI() {
+  if (!currentSession) { toast('Add a source first', 'warn'); return; }
+  const sid  = currentSession.id || currentSession.session_id;
+  const hint = (document.getElementById('genTargetHint')?.value || '').trim();
+  const btn = document.getElementById('genTargetBtn');
+  const orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Generating…'; }
+  try {
+    const r = await apiFetch(`/api/sessions/${sid}/suggest-target`, 'POST', { instructions: hint });
+    currentSession.target_mode = 'files';
+    if (typeof _targetMode !== 'undefined') _targetMode = 'files';
+    toast(`Target generated: ${r.tables} table(s) · ${r.columns} columns — review before mapping`, 'success');
+    // Reflect into the target schema tree if that renderer is available.
+    if (r.target && typeof renderTgtTree === 'function') renderTgtTree(r.target);
+    const badge = document.getElementById('tgtFilesStatusBadge');
+    if (badge) badge.textContent = `${r.tables} AI table(s)`;
+  } catch (e) {
+    toast(e.message || 'Could not generate target', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+  }
+}
 
 function resetUpload() {
   document.getElementById('dropzone').style.display      = 'block';
