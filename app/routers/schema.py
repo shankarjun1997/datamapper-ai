@@ -137,18 +137,28 @@ async def fetch_jira_context(sid: str, req: JiraContextRequest):
     api_url = f"{base_url.rstrip('/')}/rest/api/3/issue/{issue_key}"
     creds = base64.b64encode(f"{email}:{token}".encode()).decode()
 
+    hdrs = {"Authorization": f"Basic {creds}", "Accept": "application/json"}
     try:
         async with httpx.AsyncClient(timeout=15) as client:
-            resp = await client.get(api_url, headers={
-                "Authorization": f"Basic {creds}",
-                "Accept": "application/json",
-            })
-        if resp.status_code == 401:
-            raise HTTPException(401, "Jira authentication failed. Check email and API token.")
-        if resp.status_code == 404:
-            raise HTTPException(404, f"Jira issue {issue_key!r} not found, or your account can't view it. "
-                                     "Check the key is exactly right and that the API token's account has "
-                                     "permission to see that project (Jira returns 404 for issues you lack access to).")
+            resp = await client.get(api_url, headers=hdrs)
+            if resp.status_code in (401, 403, 404):
+                # Jira returns 404 for both 'no such issue' and 'not allowed to
+                # see it' — and bad credentials look like 404 too. Probe /myself
+                # to say precisely whether it's auth or access/key.
+                who = None
+                try:
+                    who = await client.get(f"{base_url.rstrip('/')}/rest/api/3/myself", headers=hdrs)
+                except httpx.RequestError:
+                    pass
+                if who is None or who.status_code != 200:
+                    raise HTTPException(401,
+                        "Jira authentication failed — the email and API token aren't valid together. "
+                        f"Create a fresh API token at id.atlassian.com while signed in as {email or 'your account'}, "
+                        "and paste it with no extra spaces.")
+                name = (who.json() or {}).get("displayName") or email
+                raise HTTPException(404,
+                    f"Authenticated as {name}, but issue {issue_key!r} isn't accessible. "
+                    "Double-check the exact key and that this account has 'Browse Projects' on that project.")
         resp.raise_for_status()
         issue_data = resp.json()
     except httpx.RequestError as e:
