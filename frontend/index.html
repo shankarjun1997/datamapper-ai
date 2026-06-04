@@ -1413,6 +1413,25 @@ select.cell-edit{
 
 /* ── SUMMARY DISPLAY ────────────────────────────────────── */
 .summary-box{background:var(--bg-0);border:1px solid var(--border);border-radius:8px;padding:16px;font-size:13px;color:var(--text-1);line-height:1.7;white-space:pre-wrap;min-height:80px;max-height:400px;overflow-y:auto}
+/* Rendered-Markdown body (Session Intelligence & other AI text) */
+.md-body{white-space:normal}
+.md-body h2,.md-body h3,.md-body h4,.md-body h5{margin:14px 0 6px;line-height:1.25;font-weight:700;color:var(--text-1)}
+.md-body h2{font-size:18px} .md-body h3{font-size:16px} .md-body h4{font-size:14px} .md-body h5{font-size:13px;color:var(--text-2)}
+.md-body h2:first-child,.md-body h3:first-child,.md-body p:first-child{margin-top:0}
+.md-body p{margin:8px 0}
+.md-body ul,.md-body ol{margin:8px 0 8px 4px;padding-left:20px}
+.md-body li{margin:3px 0}
+.md-body strong{color:var(--text-1);font-weight:700}
+.md-body code{background:var(--bg-3);border:1px solid var(--border);border-radius:4px;padding:1px 5px;font-family:var(--mono);font-size:12px;color:var(--cyan)}
+.md-body pre{background:var(--bg-3);border:1px solid var(--border);border-radius:8px;padding:12px;overflow-x:auto;margin:10px 0}
+.md-body pre code{background:none;border:none;padding:0;color:var(--text-1)}
+.md-body blockquote{margin:10px 0;padding:6px 12px;border-left:3px solid var(--cyan);background:var(--bg-3);border-radius:0 6px 6px 0;color:var(--text-2)}
+.md-body hr{border:none;border-top:1px solid var(--border);margin:14px 0}
+.md-body a{color:var(--cyan);text-decoration:underline}
+.md-table{border-collapse:collapse;width:100%;margin:10px 0;font-size:12px}
+.md-table th,.md-table td{border:1px solid var(--border);padding:6px 9px;text-align:left;vertical-align:top}
+.md-table th{background:var(--bg-3);font-weight:700;color:var(--text-1)}
+.md-table tr:nth-child(even) td{background:var(--bg-2)}
 
 /* ══════════════════════════════════════════════════════════
    MOBILE-RESPONSIVE LAYOUT
@@ -6801,6 +6820,71 @@ function toast(msg, type='info') {
 
 // ─── UTILS ───────────────────────────────────────────────
 function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+// Minimal, XSS-safe Markdown -> HTML renderer for AI-generated text (summaries,
+// STM docs). Escapes everything first, then applies a small set of block/inline
+// rules. Only http(s) links are allowed.
+function renderMarkdown(src) {
+  if (!src) return '';
+  const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const inline = s => esc(s)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  const lines = String(src).replace(/\r\n/g, '\n').split('\n');
+  const out = []; let i = 0;
+  const closeList = (st) => { while (st.length) out.push(st.pop() === 'ul' ? '</ul>' : '</ol>'); };
+  const listStack = [];
+  while (i < lines.length) {
+    let ln = lines[i];
+    // fenced code block
+    const fence = ln.match(/^```(\w*)/);
+    if (fence) {
+      closeList(listStack);
+      const buf = []; i++;
+      while (i < lines.length && !/^```/.test(lines[i])) { buf.push(esc(lines[i])); i++; }
+      i++; out.push(`<pre><code>${buf.join('\n')}</code></pre>`); continue;
+    }
+    // table block: header | --- | rows
+    if (/^\s*\|.*\|\s*$/.test(ln) && i + 1 < lines.length && /^\s*\|?[\s:|-]+\|?\s*$/.test(lines[i + 1])) {
+      closeList(listStack);
+      const cells = r => r.trim().replace(/^\|/, '').replace(/\|$/, '').split('|').map(c => c.trim());
+      const head = cells(ln); i += 2;
+      const body = [];
+      while (i < lines.length && /^\s*\|.*\|\s*$/.test(lines[i])) { body.push(cells(lines[i])); i++; }
+      let t = '<table class="md-table"><thead><tr>' + head.map(h => `<th>${inline(h)}</th>`).join('') + '</tr></thead><tbody>';
+      t += body.map(r => '<tr>' + r.map(c => `<td>${inline(c)}</td>`).join('') + '</tr>').join('');
+      out.push(t + '</tbody></table>'); continue;
+    }
+    // headings
+    const h = ln.match(/^(#{1,6})\s+(.*)$/);
+    if (h) { closeList(listStack); const lvl = Math.min(h[1].length + 1, 6); out.push(`<h${lvl}>${inline(h[2])}</h${lvl}>`); i++; continue; }
+    // horizontal rule
+    if (/^\s*(-{3,}|\*{3,}|_{3,})\s*$/.test(ln)) { closeList(listStack); out.push('<hr>'); i++; continue; }
+    // blockquote
+    if (/^\s*>\s?/.test(ln)) { closeList(listStack); out.push(`<blockquote>${inline(ln.replace(/^\s*>\s?/, ''))}</blockquote>`); i++; continue; }
+    // unordered list
+    const ul = ln.match(/^(\s*)[-*+]\s+(.*)$/);
+    const ol = ln.match(/^(\s*)\d+[.)]\s+(.*)$/);
+    if (ul || ol) {
+      const kind = ul ? 'ul' : 'ol';
+      if (!listStack.length || listStack[listStack.length - 1] !== kind) {
+        closeList(listStack); out.push(kind === 'ul' ? '<ul>' : '<ol>'); listStack.push(kind);
+      }
+      out.push(`<li>${inline((ul || ol)[2])}</li>`); i++; continue;
+    }
+    // blank line
+    if (/^\s*$/.test(ln)) { closeList(listStack); i++; continue; }
+    // paragraph (merge consecutive non-block lines)
+    closeList(listStack);
+    const para = [ln]; i++;
+    while (i < lines.length && !/^\s*$/.test(lines[i]) && !/^(#{1,6}\s|```|\s*[-*+]\s|\s*\d+[.)]\s|\s*>\s|\s*\|)/.test(lines[i])) { para.push(lines[i]); i++; }
+    out.push(`<p>${inline(para.join(' '))}</p>`);
+  }
+  closeList(listStack);
+  return out.join('\n');
+}
 function fmtDate(iso) {
   if (!iso) return '';
   try { return new Date(iso).toLocaleString(); } catch { return iso; }
@@ -7431,7 +7515,8 @@ async function loadSummary() {
     }
     phld.style.display = 'none';
     disp.style.display = 'block';
-    disp.textContent   = r.summary;
+    disp.classList.add('md-body');
+    disp.innerHTML     = renderMarkdown(r.summary || '');
 
     // Update stats from response
     if (r.stats && r.stats.total) {
