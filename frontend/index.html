@@ -3252,9 +3252,6 @@ CREATE TABLE customers (
             <div class="field"><div class="field-label">Default Provider</div><div id="gc-provider" style="color:var(--cyan);font-family:var(--mono);font-size:13px">—</div></div>
             <div class="field"><div class="field-label">Claude Model</div><div id="gc-claude" style="color:var(--orange);font-family:var(--mono);font-size:13px">—</div></div>
             <div class="field"><div class="field-label">Anthropic Key</div><div id="gc-akey" style="font-size:13px">—</div></div>
-            <div class="field"><div class="field-label">DeepSeek Key</div><div id="gc-dskey" style="font-size:13px">—</div></div>
-            <div class="field"><div class="field-label">BQ Project (env)</div><div id="gc-proj" style="color:var(--cyan);font-family:var(--mono);font-size:13px">—</div></div>
-            <div class="field"><div class="field-label">BQ Dataset (env)</div><div id="gc-ds" style="color:var(--cyan);font-family:var(--mono);font-size:13px">—</div></div>
           </div>
         </div>
       </div>
@@ -5444,15 +5441,10 @@ async function loadGlobalConfig() {
     document.getElementById('gc-akey').innerHTML        = gc.has_anthropic_key
       ? '<span class="badge badge-green">✓ Configured</span>'
       : '<span class="badge badge-red">✕ Missing — add ANTHROPIC_API_KEY to .env</span>';
-    document.getElementById('gc-dskey').innerHTML       = gc.has_deepseek_key
-      ? '<span class="badge badge-green">✓ Configured</span>'
-      : '<span class="badge badge-orange">Not set</span>';
-    document.getElementById('gc-proj').textContent      = gc.bq_project || '(not set)';
-    document.getElementById('gc-ds').textContent        = gc.bq_dataset  || '(not set)';
 
-    // Pre-fill BQ fields from env
-    if (gc.bq_project) document.getElementById('bqProject').value = gc.bq_project;
-    if (gc.bq_dataset) document.getElementById('bqDataset').value = gc.bq_dataset;
+    // Pre-fill BQ fields from env (optional connector; fields may be absent)
+    const _bp = document.getElementById('bqProject'); if (_bp && gc.bq_project) _bp.value = gc.bq_project;
+    const _bd = document.getElementById('bqDataset'); if (_bd && gc.bq_dataset) _bd.value = gc.bq_dataset;
   } catch {}
 }
 
