@@ -146,7 +146,9 @@ async def fetch_jira_context(sid: str, req: JiraContextRequest):
         if resp.status_code == 401:
             raise HTTPException(401, "Jira authentication failed. Check email and API token.")
         if resp.status_code == 404:
-            raise HTTPException(404, f"Jira issue {issue_key!r} not found.")
+            raise HTTPException(404, f"Jira issue {issue_key!r} not found, or your account can't view it. "
+                                     "Check the key is exactly right and that the API token's account has "
+                                     "permission to see that project (Jira returns 404 for issues you lack access to).")
         resp.raise_for_status()
         issue_data = resp.json()
     except httpx.RequestError as e:
@@ -208,7 +210,9 @@ async def _fetch_jira_text(base_url: str, email: str, token: str, ticket: str) -
         if resp.status_code == 401:
             raise HTTPException(401, "Jira authentication failed. Check email and API token.")
         if resp.status_code == 404:
-            raise HTTPException(404, f"Jira issue {issue_key!r} not found.")
+            raise HTTPException(404, f"Jira issue {issue_key!r} not found, or your account can't view it. "
+                                     "Check the key is exactly right and that the API token's account has "
+                                     "permission to see that project (Jira returns 404 for issues you lack access to).")
         resp.raise_for_status()
         issue_data = resp.json()
     except httpx.RequestError as e:
