@@ -6910,28 +6910,44 @@ function _updateJiraHeight() {
   }
 }
 
+// Create a fresh server-side session and adopt it locally. Used to recover when
+// the remembered session no longer exists on the backend.
+async function _ensureFreshSession() {
+  const r = await apiFetch('/api/sessions', 'POST', {
+    name: document.getElementById('sessionName')?.value.trim() || null,
+    instructions: document.getElementById('sessionInstructions')?.value.trim() || null,
+  });
+  currentSession = r;
+  currentSession.id = r.session_id;
+  localStorage.setItem('dm_session_id', r.session_id);
+  updateSessionUI();
+  return r.session_id;
+}
+
 async function fetchJiraContext() {
-  if (!currentSession) {
-    const r = await apiFetch('/api/sessions', 'POST', {
-      name: document.getElementById('sessionName').value.trim() || null,
-      instructions: document.getElementById('sessionInstructions').value.trim() || null,
-    });
-    currentSession = r;
-    currentSession.id = r.session_id;
-    localStorage.setItem('dm_session_id', r.session_id);
-    updateSessionUI();
-  }
-  const sid = currentSession.id || currentSession.session_id;
+  if (!currentSession) { await _ensureFreshSession(); }
   const statusEl = document.getElementById('jiraStatus');
   statusEl.textContent = 'Fetching…';
   statusEl.style.color = 'var(--cyan)';
+  const payload = () => ({
+    jira_url:   document.getElementById('jiraUrl').value.trim(),
+    jira_email: document.getElementById('jiraEmail').value.trim(),
+    jira_token: document.getElementById('jiraToken').value.trim(),
+    ticket_url: document.getElementById('jiraTicket').value.trim(),
+  });
   try {
-    const r = await apiFetch(`/api/sessions/${sid}/jira-context`, 'POST', {
-      jira_url:   document.getElementById('jiraUrl').value.trim(),
-      jira_email: document.getElementById('jiraEmail').value.trim(),
-      jira_token: document.getElementById('jiraToken').value.trim(),
-      ticket_url: document.getElementById('jiraTicket').value.trim(),
-    });
+    let sid = currentSession.id || currentSession.session_id;
+    let r;
+    try {
+      r = await apiFetch(`/api/sessions/${sid}/jira-context`, 'POST', payload());
+    } catch (err) {
+      // Self-heal a stale/lost session (e.g. after a server restart): make a
+      // fresh session and retry once instead of dead-ending on "not found".
+      if (/not found/i.test(err.message || '')) {
+        sid = await _ensureFreshSession();
+        r = await apiFetch(`/api/sessions/${sid}/jira-context`, 'POST', payload());
+      } else { throw err; }
+    }
     const ctx = r.context;
     const resultEl = document.getElementById('jiraContextResult');
     const bodyEl   = document.getElementById('jiraContextBody');
