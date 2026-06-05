@@ -1,3 +1,9 @@
+# ── Managed Postgres (auto-provisioned by the Blueprint) ──────────────────────
+databases:
+  - name: datamapper-db
+    plan: basic-256mb      # smallest paid tier; bump to basic-1gb for heavier use
+    region: singapore
+
 services:
   - type: web
     name: datamapper-ai-api
@@ -7,7 +13,7 @@ services:
     # client; CrewAI + LLM SDKs + pandas will OOM on free/starter.
     plan: standard
     region: singapore
-    branch: dev
+    branch: feature/enterprise-platform
 
     envVars:
       # ── Production hardening ──────────────────────────────────────────────
@@ -16,17 +22,19 @@ services:
       - key: XREF_REQUIRE_AUTH
         value: "true"            # every /api/* route needs a valid token
       - key: XREF_SECRET_KEY
-        sync: false              # REQUIRED — strong random value, set in dashboard
+        generateValue: true      # Render auto-generates a strong random value
       - key: DM_ENCRYPTION_KEY
-        sync: false              # REQUIRED in prod — Fernet key (encrypts secrets at rest)
+        sync: false              # REQUIRED — paste a Fernet key (see deploy notes)
       - key: XREF_ADMIN_EMAIL
-        sync: false              # bootstrap admin email
+        sync: false              # bootstrap admin email (your login)
       - key: XREF_ADMIN_PASSWORD
         sync: false              # bootstrap admin password (no default in prod)
       - key: DM_ALLOWED_ORIGINS
-        sync: false              # e.g. https://app.yourdomain.com (pin, don't use *)
+        sync: false              # set to your Render URL once known, e.g. https://datamapper-ai-api.onrender.com
       - key: DATABASE_URL
-        sync: false              # Postgres — required for durable multi-instance state
+        fromDatabase:            # auto-wired from the managed Postgres above
+          name: datamapper-db
+          property: connectionString
       # ── LLM provider (Anthropic by default) ──────────────────────────────
       - key: DM_PROVIDER
         value: claude
