@@ -13,7 +13,7 @@ services:
     # client; CrewAI + LLM SDKs + pandas will OOM on free/starter.
     plan: standard
     region: singapore
-    branch: feature/enterprise-platform
+    branch: main
 
     envVars:
       # ── Production hardening ──────────────────────────────────────────────
