@@ -1,0 +1,12 @@
+# Caddy reverse proxy for xREF DataMapper.
+# SITE_ADDRESS comes from .env:
+#   SITE_ADDRESS=dmapper.example.com  -> automatic HTTPS via Let's Encrypt
+#   (unset)                           -> plain HTTP on :80 (testing by IP)
+{$SITE_ADDRESS}
+
+encode gzip
+
+reverse_proxy datamapper:7788 {
+    # Keep SSE / long pipeline streams alive.
+    flush_interval -1
+}
