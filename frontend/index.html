@@ -3018,11 +3018,16 @@ CREATE TABLE customers (
         <input class="field-input btn-sm" id="mappingSearch" placeholder="🔍 Search field…"
                style="width:200px;padding:5px 10px" oninput="renderTable()">
         <button class="btn btn-ghost btn-sm" onclick="loadMappings()">↻ Refresh</button>
+        <button class="btn btn-ghost btn-sm" onclick="document.getElementById('sampleRowsInput').click()" title="Upload a CSV of real rows to validate against">📎 Sample rows</button>
+        <input type="file" id="sampleRowsInput" accept=".csv" style="display:none" onchange="uploadSampleRows(this.files)">
+        <button class="btn btn-cyan btn-sm" id="dvBtn" onclick="runDataValidation()" title="Simulate every transform against real sample values">🧪 Validate with data</button>
         <button class="btn btn-orange btn-sm" onclick="exportCSV()">⬇ Export CSV</button>
         <button class="btn btn-green btn-sm" id="approveAllBtn" onclick="approveGate2()" style="display:none">
           ✓ Approve &amp; Generate Mapping
         </button>
       </div>
+      <!-- Data-validation report (filled by runDataValidation) -->
+      <div id="dvPanel" style="display:none;border-bottom:1px solid var(--border);padding:12px 16px"></div>
       <div class="tbl-scroll">
         <table class="mapping" id="mappingTable">
           <thead>
@@ -6529,6 +6534,85 @@ function exportMappingDoc() {
   if (!currentSession) { toast('No active session','warn'); return; }
   const sid = currentSession.id || currentSession.session_id;
   window.open(`${API}/api/sessions/${sid}/export/mapping-doc`,'_blank');
+}
+
+// ─── DATA VALIDATION (prove mappings against real sample values) ────────────
+async function uploadSampleRows(files) {
+  if (!files || !files.length) return;
+  if (!currentSession) { toast('No active session','warn'); return; }
+  const sid = currentSession.id || currentSession.session_id;
+  for (const file of files) {
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      const resp = await fetch(`${API}/api/sessions/${sid}/sample-data`,
+        { method: 'POST', body: fd, credentials: 'include', headers: _uploadHeaders() });
+      const r = await resp.json();
+      if (r.detail) { toast('Sample upload failed: ' + r.detail, 'error'); continue; }
+      toast(`Sample rows loaded for ${r.table}: ${r.rows} rows · ${r.columns} cols`, 'success');
+    } catch (e) { toast('Sample upload failed: ' + e, 'error'); }
+  }
+  const inp = document.getElementById('sampleRowsInput'); if (inp) inp.value = '';
+}
+
+const _DV_BADGE = {
+  pass:    '<span class="badge badge-green">✓ pass</span>',
+  warn:    '<span class="badge badge-orange">⚠ warn</span>',
+  fail:    '<span class="badge badge-red">✕ fail</span>',
+  no_data: '<span class="badge badge-gray">— no data</span>',
+};
+
+async function runDataValidation() {
+  if (!currentSession) { toast('No active session','warn'); return; }
+  const sid = currentSession.id || currentSession.session_id;
+  const btn = document.getElementById('dvBtn');
+  const orig = btn ? btn.innerHTML : '';
+  if (btn) { btn.disabled = true; btn.innerHTML = '⏳ Validating…'; }
+  try {
+    const r = await apiFetch(`/api/sessions/${sid}/validate-data`, 'POST');
+    renderDvPanel(r);
+    const s = r.summary || {};
+    toast(`Validated ${s.total} mappings — ${s.pass} pass · ${s.warn} warn · ${s.fail} fail · ${s.no_data} no data`,
+          s.fail ? 'warn' : 'success');
+  } catch (e) {
+    toast(e.message || 'Validation failed', 'error');
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = orig; }
+  }
+}
+
+function renderDvPanel(report) {
+  const panel = document.getElementById('dvPanel');
+  if (!panel || !report || !report.summary) return;
+  const s = report.summary;
+  const issues = (report.rows || []).filter(r => r.status === 'fail' || r.status === 'warn');
+  const fmtIn = v => typeof v === 'object'
+    ? Object.entries(v).map(([k,x]) => `${k}=${x}`).join(', ') : String(v);
+  panel.style.display = 'block';
+  panel.innerHTML = `
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:${issues.length ? '10px' : '0'}">
+      <b style="font-size:13px">🧪 Data validation</b>
+      <span class="badge badge-green">${s.pass} pass</span>
+      <span class="badge badge-orange">${s.warn} warn</span>
+      <span class="badge badge-red">${s.fail} fail</span>
+      <span class="badge badge-gray">${s.no_data} no data</span>
+      <span style="font-size:11px;color:var(--text-3)">${s.tables_with_samples} table(s) with samples — add more via 📎 Sample rows</span>
+      <button class="btn btn-ghost btn-sm" style="margin-left:auto" onclick="document.getElementById('dvPanel').style.display='none'">✕</button>
+    </div>
+    ${issues.map(r => `
+      <div style="border:1px solid var(--border);border-radius:9px;padding:9px 12px;margin-top:6px;font-size:12px">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          ${_DV_BADGE[r.status] || ''}
+          <span class="cell-mono">${escHtml(r.src_field)}</span> →
+          <span class="cell-mono">${escHtml(r.tgt_table)}.${escHtml(r.tgt_column)}</span>
+        </div>
+        ${(r.checks || []).filter(c => c.status === 'fail' || c.status === 'warn')
+          .map(c => `<div style="color:var(--text-2);margin-top:4px">• ${escHtml(c.detail)}</div>`).join('')}
+        ${(r.examples || []).slice(0,2).map(e =>
+          `<div style="color:var(--text-3);margin-top:3px;font-family:var(--mono);font-size:11px">${escHtml(fmtIn(e.in))} → "${escHtml(e.out)}"</div>`).join('')}
+      </div>`).join('')}
+    ${!issues.length && s.total ? '<div style="font-size:12px;color:var(--green)">All sampled mappings validated cleanly ✓</div>' : ''}
+  `;
 }
 
 function exportSQL() {
