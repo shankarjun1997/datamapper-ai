@@ -17,6 +17,9 @@ services:
     environment:
       - DATABASE_URL=postgresql+psycopg2://xref:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@postgres:5432/xref
       - REDIS_URL=redis://redis:6379/0
+      # Pin the port: a stray PORT=... in .env must not move the app away from
+      # where Caddy and the healthcheck expect it.
+      - PORT=7788
     volumes:
       - ./runtime:/app/runtime
       - ./audits:/app/audits
