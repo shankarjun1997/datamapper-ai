@@ -7,7 +7,7 @@ import asyncio
 import uuid
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.core.llm_client import _add_usage, _make_llm
@@ -270,6 +270,79 @@ async def suggest_table_mappings(sid: str, body: dict = Body(...)):
 
     suggestions = [p for p in (_normalize_pair(sg) for sg in raw_list) if p]
     return {"suggestions": suggestions}
+
+
+@router.post("/api/sessions/{sid}/sample-data")
+async def upload_sample_data(sid: str, request: Request):
+    """Upload a CSV of real sample ROWS for one source table (header = column
+    names). These power data validation: transforms are simulated against them."""
+    s = _session_or_404(sid)
+    form = await request.form()
+    file = form.get("file")
+    table = (form.get("table") or "").strip()
+    if file is None:
+        raise HTTPException(422, "Attach a CSV file of sample rows.")
+    content = await file.read()
+
+    import csv as _csv
+    import io as _io
+    try:
+        text = content.decode("utf-8-sig", errors="replace")
+        reader = _csv.reader(_io.StringIO(text))
+        header = next(reader, None)
+        if not header:
+            raise ValueError("empty file")
+        header = [h.strip() for h in header]
+        cols: dict = {h: [] for h in header if h}
+        for i, row in enumerate(reader):
+            if i >= 200:
+                break
+            for h, v in zip(header, row):
+                if h:
+                    cols[h].append(v)
+    except Exception as e:
+        raise HTTPException(422, f"Could not parse CSV: {e}")
+
+    # Resolve the table: explicit param, else match filename / columns to a source table.
+    src_tables = (s.get("schema_data") or {}).get("tables", []) or []
+    if not table:
+        fname = (getattr(file, "filename", "") or "").rsplit(".", 1)[0].lower()
+        for t in src_tables:
+            if t.get("name", "").lower() in (fname,) or fname in t.get("name", "").lower():
+                table = t["name"]; break
+    if not table:
+        # best column-name overlap
+        best, best_n = "", 0
+        hdr = {h.lower() for h in cols}
+        for t in src_tables:
+            n = len(hdr & {c["name"].lower() for c in t.get("columns", [])})
+            if n > best_n:
+                best, best_n = t.get("name", ""), n
+        table = best
+    if not table:
+        raise HTTPException(422, "Couldn't match this CSV to a source table — pass ?table=NAME.")
+
+    s.setdefault("sample_data", {})[table] = cols
+    n_rows = max((len(v) for v in cols.values()), default=0)
+    return {"ok": True, "table": table, "columns": len(cols), "rows": n_rows}
+
+
+@router.post("/api/sessions/{sid}/validate-data")
+async def run_data_validation(sid: str):
+    """Validate every mapping against sample data (deterministic, no LLM)."""
+    s = _session_or_404(sid)
+    if not s.get("mappings"):
+        raise HTTPException(422, "No mappings to validate — run the pipeline first.")
+    from app.intelligence.data_validation import validate_session
+    report = validate_session(s)
+    _save_sessions()
+    return report
+
+
+@router.get("/api/sessions/{sid}/validate-data")
+async def get_data_validation(sid: str):
+    s = _session_or_404(sid)
+    return s.get("data_validation") or {"summary": None, "rows": []}
 
 
 @router.post("/api/sessions/{sid}/mappings/{row_id}/no-mapping")
