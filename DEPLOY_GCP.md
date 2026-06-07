@@ -86,7 +86,12 @@ POSTGRES_PASSWORD=<paste generated value>
 
 ## Phase 5 — Launch
 
+The container runs as a non-root user (uid 10001); give it ownership of the
+state folders it writes to, then start everything:
+
 ```bash
+mkdir -p runtime audits
+sudo chown -R 10001:10001 runtime audits
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
