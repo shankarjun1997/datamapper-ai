@@ -1477,6 +1477,11 @@ select.cell-edit{
 .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
 .btn-row .btn-lg { flex: 1 1 200px; justify-content: center; }
 
+/* Two-column workspace layout (config left, schema tree right) — collapses to
+   a single column on tablets/phones so neither side gets crushed. */
+.two-col-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,370px);gap:20px;align-items:start}
+@media (max-width: 1024px){ .two-col-layout{grid-template-columns:1fr} }
+
 @media (max-width: 768px) {
   /* ── SIDEBAR ────────────── */
   .sidebar {
@@ -1592,6 +1597,33 @@ select.cell-edit{
 
   /* ── LIVE LOG HEIGHT ─────── */
   .live-log { height: 180px; }
+
+  /* ── ANY WIDE TABLE IN A CARD scrolls sideways instead of breaking layout ── */
+  .card-body { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .md-body   { overflow-x: auto; }
+  .md-table  { min-width: 420px; }
+
+  /* ── MODALS: near-fullscreen on phones ── */
+  #schemaEditorModal > div,
+  #appendSrcModal > div,
+  #inviteUserModal > div {
+    width: 100vw !important;
+    max-width: 100vw !important;
+    max-height: 100dvh !important;
+    border-radius: 0 !important;
+    padding: 16px !important;
+  }
+
+  /* ── Schema-editor grid stays usable on small screens ── */
+  #schemaEditorBody table { min-width: 460px; }
+  #schemaEditorBody [data-ti] { overflow-x: auto; }
+
+  /* ── Context/Jira panels: buttons go full width for thumbs ── */
+  #ctxDeriveBtn, #genTargetBtn, #tmConfirmCtxBtn { width: 100%; margin-left: 0 !important; }
+  #ctxSourceName, #ctxJiraTicket, #genTargetHint { max-width: 100% !important; flex: 1 1 100%; }
+
+  /* ── Stepper text wraps instead of overflowing ── */
+  .step-desc { font-size: 11px; }
 }
 
 @media (max-width: 480px) {
@@ -1608,9 +1640,18 @@ select.cell-edit{
   }
   .provider-pill { flex: 1 1 100%; }
   .card-body     { padding: 14px; }
+
+  /* iOS Safari zooms the page when a focused input has font-size < 16px.
+     Force 16px on phones so tapping a field doesn't yank the viewport. */
+  input.field-input, select.field-input, textarea.field-input { font-size: 16px !important; }
+
+  /* KPI cards single-file on narrow phones */
+  .grid-4 { grid-template-columns: 1fr 1fr; }
+  .deck, .stepper { gap: 8px; }
 }
 /* ── Table Mapping Discovery ──────────────────────────────── */
 .tblmap-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px; }
+@media (max-width: 768px){ .tblmap-grid { grid-template-columns:1fr; } }
 .tblmap-panel { background:var(--bg-2); border:1px solid var(--border); border-radius:10px; overflow:hidden; }
 .tblmap-panel-header { padding:10px 14px; background:var(--bg-3); border-bottom:1px solid var(--border); font-size:12px; font-weight:600; color:var(--text-3); display:flex; align-items:center; gap:8px; }
 .tblmap-panel-body { padding:10px; max-height:340px; overflow-y:auto; }
@@ -2112,7 +2153,7 @@ select.cell-edit{
     </div>
 
     <!-- Two-column: config left, source table tree right -->
-    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,360px);gap:20px;align-items:start">
+    <div class="two-col-layout">
 
     <div><!-- LEFT COLUMN -->
 
@@ -2492,7 +2533,7 @@ CREATE TABLE customers (
     </div>
 
     <!-- Two-column layout: config left, schema preview right -->
-    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,380px);gap:20px;align-items:start">
+    <div class="two-col-layout">
 
     <div><!-- LEFT COLUMN -->
 
