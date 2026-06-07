@@ -12,6 +12,7 @@ sessions/
 uploads/
 .git/
 *.sh
+!docker-entrypoint.sh
 gcp_json_key/
 *service-account*.json
 *credentials*.json
