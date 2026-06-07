@@ -43,6 +43,10 @@ services:
       - ./runtime:/app/runtime
     depends_on: [redis, postgres]
     restart: unless-stopped
+    # The Dockerfile's HTTP healthcheck doesn't apply to a Celery worker —
+    # disable it so this container doesn't read 'unhealthy' forever.
+    healthcheck:
+      disable: true
 
   postgres:
     image: postgres:16-alpine
