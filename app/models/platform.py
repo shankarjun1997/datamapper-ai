@@ -55,6 +55,24 @@ class DBAuditEvent(Base):
     meta       = Column(JSON, default=dict)
 
 
+class DBTenant(Base):
+    """Tenant accounts + the per-tenant secret vault.
+
+    The full tenant dict (users[] with bcrypt hashes, secrets{} with Fernet-
+    encrypted values, billing{}) lives in the ``data`` JSON column; slug/name/
+    plan are mirrored as columns for querying. Moving this out of the local
+    JSON file makes credentials durable across redeploys and consistent across
+    instances.
+    """
+    __tablename__ = "xref_tenants"
+
+    slug       = Column(String(64), primary_key=True)
+    name       = Column(String(255), default="")
+    plan       = Column(String(32), default="trial")
+    data       = Column(JSON, default=dict)
+    updated_at = Column(String(32), default="")
+
+
 class DBMappingMemory(Base):
     __tablename__ = "xref_mapping_memory"
 
