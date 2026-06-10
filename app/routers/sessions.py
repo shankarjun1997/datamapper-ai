@@ -136,6 +136,27 @@ async def all_sessions_usage(request: Request):
     }
 
 
+@router.delete("/api/sessions/{sid}")
+async def delete_session(sid: str, request: Request):
+    """Permanently delete a session and all its data (mappings, schema, samples,
+    generated SQL, documents). Tenant-scoped + audited — the data-retention /
+    'remove this session' control."""
+    caller_tenant = _get_tenant_from_request(request)
+    s = _session_or_404(sid, caller_tenant)   # 404s on cross-tenant access
+    _sessions.pop(sid, None)
+    try:
+        from app.core.db_store import db_delete_session
+        db_delete_session(sid)
+    except Exception:
+        pass
+    _save_sessions()
+    _write_audit_event("session.deleted", tenant=s.get("tenant"),
+                       email=(s.get("user_email") or ""), session_id=sid,
+                       ip=_get_client_ip(request),
+                       metadata={"filename": s.get("filename", "")})
+    return {"ok": True, "deleted": sid}
+
+
 @router.get("/api/sessions/{sid}")
 async def get_session(sid: str):
     s = _session_or_404(sid)
