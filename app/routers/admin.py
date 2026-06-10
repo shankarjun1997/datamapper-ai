@@ -26,20 +26,36 @@ from app.state import _audit_events, _audit_log, _TENANTS as _tenants, _save_ten
 router = APIRouter()
 
 
+def _caller_tenant(request: Request) -> tuple[str, bool]:
+    """(tenant, is_super_admin) from the bearer token."""
+    auth_header = request.headers.get("Authorization", "")
+    payload = _verify_token(auth_header[7:]) if auth_header.startswith("Bearer ") else None
+    t = (payload or {}).get("tenant", "")
+    return t, (t == _ADMIN_TENANT)
+
+
+def _audit_visible(rec: dict, tenant: str, is_super: bool) -> bool:
+    return is_super or (rec.get("tenant") == tenant)
+
+
 @router.get("/api/audit")
-async def list_audit():
-    """Return all audit records (newest first), without the full mapping snapshot."""
+async def list_audit(request: Request, _user=Depends(require_admin)):
+    """Return this tenant's audit records (newest first), without the full
+    mapping snapshot. Admin-only; super-admin sees all tenants."""
+    tenant, is_super = _caller_tenant(request)
     return [
         {k: v for k, v in rec.items() if k != "mappings_snapshot"}
-        for rec in reversed(_audit_log)
+        for rec in reversed(_audit_log) if _audit_visible(rec, tenant, is_super)
     ]
 
 
 @router.get("/api/audit/{record_id}/csv")
-async def audit_csv(record_id: str):
-    """Stream the mapping snapshot of a specific audit record as CSV."""
+async def audit_csv(record_id: str, request: Request, _user=Depends(require_admin)):
+    """Stream the mapping snapshot of a specific audit record as CSV.
+    Admin-only and scoped to the caller's tenant."""
+    tenant, is_super = _caller_tenant(request)
     rec = next((r for r in _audit_log if r["id"] == record_id), None)
-    if not rec:
+    if not rec or not _audit_visible(rec, tenant, is_super):
         raise HTTPException(404, "Audit record not found")
     buf = io.StringIO()
     fieldnames = ["src_table","src_field","src_type","tgt_table","tgt_column",
