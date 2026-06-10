@@ -269,10 +269,20 @@ def _tenants_for_disk() -> list:
 
 
 def _save_tenants() -> None:
-    """Persist mutable tenant + user state to disk (best-effort)."""
+    """Persist mutable tenant + secret state — Postgres when in DB mode (durable,
+    multi-instance safe), else the local JSON file. Secrets are encrypted by
+    ``_tenants_for_disk`` before they leave memory either way."""
+    payload = _tenants_for_disk()
+    if _DB_MODE:
+        try:
+            from app.core.db_store import db_save_tenants
+            db_save_tenants(payload)
+            return
+        except Exception as e:
+            logger.error("DB tenant save failed, falling back to JSON: %s", e)
     try:
         with open(_TENANTS_STORE_PATH, "w") as f:
-            json.dump(_tenants_for_disk(), f, indent=2)
+            json.dump(payload, f, indent=2)
     except Exception as e:
         logger.warning("Failed to save tenants: %s", e)
 
@@ -286,8 +296,31 @@ def _load_tenants() -> None:
     """
     from app.config import _DEFAULT_TENANTS
 
-    # 1) Disk-persisted mutable state (highest priority).
-    if os.path.exists(_TENANTS_STORE_PATH):
+    loaded_from_db = False
+    # 1a) Postgres (highest priority when DB mode is active).
+    if _DB_MODE:
+        try:
+            from app.core.db_store import db_load_tenants
+            for t in db_load_tenants():
+                if isinstance(t, dict) and t.get("slug"):
+                    _TENANTS[t["slug"]] = _migrate_tenant(t)
+            loaded_from_db = True
+            logger.info("Loaded %d tenants from Postgres", len(_TENANTS))
+            # One-time migration: import any legacy JSON-file tenants the DB
+            # doesn't know about yet, so an upgrading instance doesn't lose them.
+            if os.path.exists(_TENANTS_STORE_PATH):
+                try:
+                    with open(_TENANTS_STORE_PATH) as f:
+                        for t in (json.load(f) or []):
+                            if isinstance(t, dict) and t.get("slug"):
+                                _TENANTS.setdefault(t["slug"], _migrate_tenant(t))
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.error("DB tenant load failed, trying JSON: %s", e)
+
+    # 1b) Disk-persisted mutable state (when not in DB mode).
+    if not loaded_from_db and os.path.exists(_TENANTS_STORE_PATH):
         try:
             with open(_TENANTS_STORE_PATH) as f:
                 stored = json.load(f)

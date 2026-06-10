@@ -17,7 +17,7 @@ from sqlalchemy import and_, delete, select
 
 from app.config import logger
 from app.core.db import db_available, get_db_session
-from app.models.platform import DBAuditEvent, DBMappingMemory, DBSession
+from app.models.platform import DBAuditEvent, DBMappingMemory, DBSession, DBTenant
 
 
 # Columns that are first-class on DBSession (everything else goes into `extra`)
@@ -139,6 +139,45 @@ def db_delete_session(sid: str) -> None:
     with get_db_session() as s:
         s.execute(delete(DBSession).where(DBSession.id == sid))
         s.commit()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tenants + secret vault
+# ─────────────────────────────────────────────────────────────────────────────
+def db_save_tenants(tenants: List[Dict[str, Any]]) -> None:
+    """Upsert the given tenant dicts (secrets already encrypted by the caller)
+    and remove any slug no longer present. Authoritative full-replace."""
+    keep = set()
+    with get_db_session() as s:
+        for t in tenants:
+            slug = t.get("slug")
+            if not slug:
+                continue
+            keep.add(slug)
+            row = s.get(DBTenant, slug)
+            if row is None:
+                row = DBTenant(slug=slug)
+                s.add(row)
+            row.name = t.get("name", "") or ""
+            row.plan = t.get("plan", "trial") or "trial"
+            row.data = t
+            row.updated_at = _now()
+        # Drop tenants that were deleted in memory.
+        existing = {r.slug for r in s.execute(select(DBTenant.slug)).scalars()}
+        for slug in existing - keep:
+            s.execute(delete(DBTenant).where(DBTenant.slug == slug))
+        s.commit()
+
+
+def db_load_tenants() -> List[Dict[str, Any]]:
+    """Return all tenant dicts (secrets still encrypted; caller decrypts)."""
+    out: List[Dict[str, Any]] = []
+    with get_db_session() as s:
+        for row in s.execute(select(DBTenant)).scalars():
+            data = dict(row.data or {})
+            data.setdefault("slug", row.slug)
+            out.append(data)
+    return out
 
 
 # ─────────────────────────────────────────────────────────────────────────────
