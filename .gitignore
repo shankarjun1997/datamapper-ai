@@ -65,3 +65,8 @@ logs/
 runtime/
 audits/
 *.jsonl
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
