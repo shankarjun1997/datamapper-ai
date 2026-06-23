@@ -147,6 +147,21 @@ _SOURCE_SYS = (
     "If only one table is implied, return a single table. Prefer snake_case column names."
 )
 
+_SP_SOURCE_SYS = (
+    "You are a senior data engineer analysing SQL stored procedures and functions. "
+    "Read the SQL file below — it contains CREATE PROCEDURE / CREATE FUNCTION "
+    "definitions and possibly CREATE TABLE statements. "
+    "Analyse every SELECT, INSERT, UPDATE, DELETE, MERGE, and DECLARE statement "
+    "inside the procedure bodies to discover the tables and columns the code "
+    "operates on. Infer the full SOURCE data schema for every table referenced: "
+    "table name, each column with its name, best-guess BigQuery data type, and "
+    "whether it is nullable. "
+    "Return ONLY JSON (no prose, no markdown fence) shaped exactly as: "
+    '{"tables":[{"name":"...","columns":[{"name":"...","type":"STRING","nullable":true}]}]}. '
+    "Types must be one of STRING, INT64, NUMERIC, FLOAT64, BOOL, DATE, TIMESTAMP, JSON. "
+    "Prefer snake_case column names."
+)
+
 _TARGET_SYS = (
     "You are a senior data architect designing a clean target schema for a data "
     "migration. Given the SOURCE tables/columns and optional context, propose the "

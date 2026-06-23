@@ -2274,9 +2274,11 @@ select.cell-edit{
                 <span class="badge badge-gray">XLSX</span>
                 <span class="badge badge-gray">XLS</span>
                 <span class="badge badge-gray">CSV</span>
+                <span class="badge badge-gray">SQL</span>
+                <span class="badge badge-gray">DDL</span>
               </div>
             </div>
-            <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" multiple style="display:none" onchange="handleFiles(this.files)">
+            <input type="file" id="fileInput" accept=".xlsx,.xls,.csv,.sql,.ddl,.txt" multiple style="display:none" onchange="handleFiles(this.files)">
           </div>
         </div>
 
@@ -2685,19 +2687,21 @@ CREATE TABLE customers (
                  ondragover="tgtDz_dragover(event)" ondragleave="tgtDz_dragleave(event)" ondrop="tgtDz_drop(event)"
                  onclick="document.getElementById('targetFilesInput').click()" style="margin-bottom:14px">
               <div class="dropzone-icon">📁</div>
-              <div class="dropzone-title">Drop target schema CSVs here</div>
-              <div class="dropzone-sub">One file per target table · <span style="color:var(--cyan)">browse files</span></div>
+              <div class="dropzone-title">Drop target schema files here</div>
+              <div class="dropzone-sub">CSV per table, or DDL/SQL · <span style="color:var(--cyan)">browse files</span></div>
               <div class="dropzone-formats">
                 <span class="badge badge-gray">CSV</span>
+                <span class="badge badge-gray">SQL</span>
+                <span class="badge badge-gray">DDL</span>
                 <span class="badge badge-gray">Multiple files</span>
               </div>
             </div>
-            <input type="file" id="targetFilesInput" accept=".csv" multiple style="display:none" onchange="uploadTargetFiles(this.files)">
+            <input type="file" id="targetFilesInput" accept=".csv,.sql,.ddl,.txt" multiple style="display:none" onchange="uploadTargetFiles(this.files)">
             <div id="targetFilesList" style="margin-bottom:12px;display:none">
               <div style="font-size:12px;font-weight:600;color:var(--text-3);margin-bottom:6px">Staged files:</div>
               <div id="targetFilesItems"></div>
             </div>
-            <button class="btn btn-cyan" onclick="document.getElementById('targetFilesInput').click()">📁 Select CSV Files</button>
+            <button class="btn btn-cyan" onclick="document.getElementById('targetFilesInput').click()">📁 Select Files</button>
             <div id="tgtFilesResult" style="margin-top:12px;display:none" class="card">
               <div class="card-body" style="padding:12px;font-size:13px" id="tgtFilesMsg"></div>
             </div>
@@ -4665,7 +4669,7 @@ async function handleFiles(files) {
   updateSessionUI();
 
   // Keep the dropzone available so more files can be added.
-  document.getElementById('dzTitle').textContent = 'Add another CSV (drag or click)';
+  document.getElementById('dzTitle').textContent = 'Add another file (drag or click)';
   const fi = document.getElementById('fileInput'); if (fi) fi.value = '';
 
   const fileList = last.files || [];

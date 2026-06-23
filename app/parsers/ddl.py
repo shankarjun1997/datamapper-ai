@@ -36,6 +36,53 @@ def _parse_ddl_column(line: str) -> Optional[Dict]:
     return None
 
 
+_SP_HDR = re.compile(
+    r"CREATE\s+(?:OR\s+REPLACE\s+)?"
+    r"(?:PROC(?:EDURE)?|FUNCTION)\s+"
+    r"(?:IF\s+NOT\s+EXISTS\s+)?",
+    re.IGNORECASE,
+)
+
+_SP_NAME = re.compile(
+    r"[`\"\[]?(\w+)[`\"\]]?(?:\s*\.\s*[`\"\[]?(\w+)[`\"\]]?)?",
+)
+
+
+def has_stored_procedures(sql_text: str) -> bool:
+    """Return True if the SQL text contains stored procedure/function definitions."""
+    return bool(_SP_HDR.search(sql_text))
+
+
+_SP_HDR_DETAILED = re.compile(
+    r"CREATE\s+(?:OR\s+REPLACE\s+)?"
+    r"(PROCEDURE|PROC|FUNCTION)\s+"
+    r"(?:IF\s+NOT\s+EXISTS\s+)?"
+    r"([`\"\[]?\w+[`\"\]]?(?:\s*\.\s*[`\"\[]?\w+[`\"\]]?)?)",
+    re.IGNORECASE,
+)
+
+
+def extract_stored_procedures(sql_text: str) -> List[Dict[str, Any]]:
+    """Extract stored procedure/function names from SQL text.
+
+    Returns a list of {name, type} dicts. The full SQL text is best sent to
+    an LLM for schema inference — this just detects presence and extracts
+    metadata for prompting.
+    """
+    procs: List[Dict[str, Any]] = []
+    for m in _SP_HDR_DETAILED.finditer(sql_text):
+        kind_raw = (m.group(1) or "").upper()
+        kind = "FUNCTION" if kind_raw == "FUNCTION" else "PROCEDURE"
+        full_name = (m.group(2) or "").strip("`\"[] ")
+        if full_name:
+            # Extract the last segment as the canonical name (e.g. dbo.CleanupData → CleanupData)
+            parts = re.split(r"\s*\.\s*", full_name)
+            name = parts[-1].strip("`\"[] ")
+            if name:
+                procs.append({"name": name, "type": kind})
+    return procs
+
+
 def parse_ddl(ddl_text: str) -> Dict[str, Any]:
     """Parse SQL DDL (any dialect) into schema format."""
     tables: List[Dict] = []

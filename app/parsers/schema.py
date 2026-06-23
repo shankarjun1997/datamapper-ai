@@ -203,7 +203,7 @@ def parse_schema_file(content: bytes, filename: str) -> Dict[str, Any]:
         return _parse_excel(content)
     elif ext == "csv":
         return _parse_csv(content, filename)
-    elif ext == "sql":
+    elif ext in ("sql", "ddl", "txt"):
         return parse_ddl(content.decode("utf-8-sig", errors="replace"))
     else:
         raise ValueError(f"Unsupported file type: .{ext}")

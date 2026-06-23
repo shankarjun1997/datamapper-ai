@@ -37,12 +37,44 @@ async def upload_schema(sid: str, request: Request, file: UploadFile = File(...)
     s = _session_or_404(sid)
     content = await file.read()
     safe_name = _validate_upload(file.filename or "upload.csv", content)
+
+    # Parse CREATE TABLE statements (and CSV/XLSX) normally
+    from app.parsers.ddl import has_stored_procedures
     try:
         parsed = parse_schema_file(content, safe_name)
     except Exception as e:
         raise HTTPException(422, str(e))
 
+    # For SQL/DDL files: if stored procedures are present, use LLM to infer
+    # tables/columns referenced inside procedure bodies — these augment the
+    # explicit CREATE TABLE results.
+    sp_inferred = {"tables": []}
+    if safe_name.endswith((".sql", ".ddl", ".txt")):
+        sql_text = content.decode("utf-8-sig", errors="replace")
+        if has_stored_procedures(sql_text):
+            llm = _make_llm(s)
+            if llm is not None:
+                from app.intelligence.source_infer import (
+                    _SP_SOURCE_SYS, build_source_prompt, normalize_schema,
+                )
+                try:
+                    raw = await asyncio.to_thread(
+                        llm.complete_json, _SP_SOURCE_SYS,
+                        build_source_prompt(sql_text, safe_name.rsplit(".", 1)[0]),
+                    )
+                    _add_usage(s, llm.last_usage, llm.provider, llm.model, "sp_inference")
+                    sp_inferred = normalize_schema(raw, default_name=safe_name.rsplit(".", 1)[0])
+                except Exception:
+                    pass  # LLM inference is best-effort; fall through to parsed result
+
     from app.intelligence.insights import merge_schemas
+
+    # Merge: existing session schema (if append) → parsed CREATE TABLE → LLM-inferred
+    if sp_inferred["tables"] and parsed["tables"]:
+        parsed = merge_schemas(parsed, sp_inferred)
+    elif sp_inferred["tables"]:
+        parsed = sp_inferred
+
     existing = s.get("schema_data") if append else None
     schema_data = merge_schemas(existing, parsed) if (existing and existing.get("tables")) else parsed
     s["schema_data"] = schema_data
